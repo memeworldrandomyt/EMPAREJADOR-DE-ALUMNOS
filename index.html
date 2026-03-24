@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emparejar Alumnos</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Emparejar alumnos</h1>
+      <p>Agrupa la clase en equipos aleatorios al instante.</p>
+    </header>
+
+    <div class="card">
+      <div class="control-row">
+        <label>Tamaño del grupo</label>
+        <input type="range" id="slider" min="1" max="10" value="2" oninput="document.getElementById('slider-val').textContent = this.value">
+        <span class="slider-val" id="slider-val">2</span>
+      </div>
+      <button onclick="emparejar()">Emparejar →</button>
+    </div>
+
+    <div id="resultado"></div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
