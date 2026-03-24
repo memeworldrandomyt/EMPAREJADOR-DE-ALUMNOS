@@ -18,8 +18,8 @@ def emparejar_alumnos(lista, tamaño_grupo):
         print(f"  Grupo {i}: {', '.join(grupo)}")
     print("-" * 35)
     print(f"Total de grupos: {len(grupos)}")
-    if len(grupos[-1]) < tamaño_grupo:
-        print(f"(El último grupo tiene {len(grupos[-1])} alumno(s) por no ser divisible exactamente)")
+    #if len(grupos[-1]) < tamaño_grupo:
+        #print(f"(El último grupo tiene {len(grupos[-1])} alumno(s) por no ser divisible exactamente)")
 
 #Bucle principal para permitir al usuario emparejar varias veces
 while True:
