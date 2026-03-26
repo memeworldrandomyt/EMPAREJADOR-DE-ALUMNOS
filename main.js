@@ -1,30 +1,223 @@
-// ─── Estado global ───────────────────────────────────────────────
-let alumnos = [];
+// ══════════════════════════════════════════════════════════════════
+//  CONFIGURACIÓN — rellena con tus datos de Google Cloud Console
+// ══════════════════════════════════════════════════════════════════
+const CONFIG = {
+    clientId:      '490204576711-mjpqqt3pjsh5nf9udo4272719eedhjvb.apps.googleusercontent.com',  // OAuth 2.0 Client ID
+    apiKey:        'AIzaSyDDg3DGAtuEqaDusmJxlmjmLfy40og0ccQ',                                // API Key (para Sheets)
+    spreadsheetId: '1JAFWVUenNEDssEPo9mb4Ni4YzKcZlAAf4dxEDDNSnA8',                        // ID del Google Sheet compartido
+    sheetName:     'Votos',                                     // Nombre de la hoja
+};
 
-// ─── Drag & drop ─────────────────────────────────────────────────
+const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
+const TAMAÑO_GRUPO  = 30;
+const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+
+// ── Estado ────────────────────────────────────────────────────────
+let tokenClient    = null;
+let accessToken    = null;
+let usuarioActual  = null;   // { nombre, email, foto }
+let alumnos        = [];
+
+// ══════════════════════════════════════════════════════════════════
+//  INICIALIZACIÓN — esperar a que carguen las librerías de Google
+// ══════════════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+    // Cargar gapi (Sheets)
+    gapi.load('client', async () => {
+        await gapi.client.init({
+            apiKey:      CONFIG.apiKey,
+            discoveryDocs: [DISCOVERY_DOC],
+        });
+    });
+
+    // Inicializar Google Identity token client
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CONFIG.clientId,
+        scope:     SCOPES,
+        callback:  async (resp) => {
+            if (resp.error) {
+                mostrarLoginError('Error de autenticación: ' + resp.error);
+                return;
+            }
+            accessToken = resp.access_token;
+            gapi.client.setToken({ access_token: accessToken });
+            await cargarPerfilUsuario();
+        },
+    });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════════════
+function iniciarSesion() {
+    mostrarLoginError('');
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function cerrarSesion() {
+    if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => {});
+    }
+    accessToken   = null;
+    usuarioActual = null;
+    document.getElementById('pantallaApp').style.display   = 'none';
+    document.getElementById('pantallaLogin').style.display = '';
+}
+
+async function cargarPerfilUsuario() {
+    try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: 'Bearer ' + accessToken }
+        });
+        const perfil = await res.json();
+        usuarioActual = {
+            nombre: perfil.name  || perfil.email,
+            email:  perfil.email,
+            foto:   perfil.picture || '',
+        };
+
+        // Actualizar UI
+        document.getElementById('userName').textContent  = usuarioActual.nombre;
+        document.getElementById('userEmail').textContent = usuarioActual.email;
+
+        const avatarImg      = document.getElementById('userAvatar');
+        const avatarFallback = document.getElementById('userAvatarFallback');
+        if (usuarioActual.foto) {
+            avatarImg.src          = usuarioActual.foto;
+            avatarImg.style.display = '';
+            avatarFallback.style.display = 'none';
+        } else {
+            avatarImg.style.display      = 'none';
+            avatarFallback.style.display = '';
+            avatarFallback.textContent   = usuarioActual.nombre[0].toUpperCase();
+        }
+
+        document.getElementById('pantallaLogin').style.display = 'none';
+        document.getElementById('pantallaApp').style.display   = '';
+
+        // Pre-cargar votos existentes si hay lista activa
+        inicializarSelect();
+    } catch (err) {
+        mostrarLoginError('No se pudo obtener el perfil: ' + err.message);
+    }
+}
+
+function mostrarLoginError(msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — leer y escribir
+// ══════════════════════════════════════════════════════════════════
+
+// Estructura del Sheet:
+// Columna A: email
+// Columna B: nombre
+// Columna C: preferencia (nombre elegido o vacío)
+// Columna D: timestamp
+
+async function leerVotos() {
+    try {
+        const res = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range: `${CONFIG.sheetName}!A2:D`,
+        });
+        const filas = res.result.values || [];
+        const votos = {};
+        filas.forEach(fila => {
+            const [email, nombre, preferencia] = fila;
+            if (nombre) votos[nombre] = { email, preferencia: preferencia || null };
+        });
+        return votos;
+    } catch (err) {
+        // Si la hoja está vacía o no existe aún
+        if (err.status === 400 || err.status === 404) return {};
+        throw new Error('Error leyendo Google Sheets: ' + (err.result?.error?.message || err.message));
+    }
+}
+
+async function escribirVoto(nombre, email, preferencia) {
+    // 1. Buscar si ya existe una fila para este usuario
+    let filaExistente = null;
+    try {
+        const res = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range: `${CONFIG.sheetName}!A2:B`,
+        });
+        const filas = res.result.values || [];
+        filas.forEach((fila, i) => {
+            if (fila[1] === nombre || fila[0] === email) {
+                filaExistente = i + 2; // +2 porque empezamos en fila 2
+            }
+        });
+    } catch { /* hoja vacía */ }
+
+    const valores = [[email, nombre, preferencia || '', new Date().toISOString()]];
+
+    if (filaExistente) {
+        // Actualizar fila existente
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId:     CONFIG.spreadsheetId,
+            range:             `${CONFIG.sheetName}!A${filaExistente}:D${filaExistente}`,
+            valueInputOption:  'RAW',
+            resource:          { values: valores },
+        });
+    } else {
+        // Crear cabecera si la hoja está vacía
+        await asegurarCabecera();
+        // Añadir nueva fila
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId:     CONFIG.spreadsheetId,
+            range:             `${CONFIG.sheetName}!A:D`,
+            valueInputOption:  'RAW',
+            insertDataOption:  'INSERT_ROWS',
+            resource:          { values: valores },
+        });
+    }
+}
+
+async function asegurarCabecera() {
+    try {
+        const res = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range: `${CONFIG.sheetName}!A1:D1`,
+        });
+        if (!res.result.values || !res.result.values[0]) {
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId:    CONFIG.spreadsheetId,
+                range:            `${CONFIG.sheetName}!A1:D1`,
+                valueInputOption: 'RAW',
+                resource: { values: [['Email', 'Nombre', 'Preferencia', 'Timestamp']] },
+            });
+        }
+    } catch { /* ignorar */ }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CARGA DE DOCUMENTO
+// ══════════════════════════════════════════════════════════════════
 const uploadArea = document.getElementById('uploadArea');
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
 uploadArea.addEventListener('drop', e => {
     e.preventDefault();
     uploadArea.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) procesarArchivo(file);
+    if (e.dataTransfer.files[0]) procesarArchivo(e.dataTransfer.files[0]);
 });
 
-// ─── Entrada de archivo ───────────────────────────────────────────
-function cargarArchivo(event) {
-    const file = event.target.files[0];
-    if (file) procesarArchivo(file);
+function cargarArchivo(e) {
+    if (e.target.files[0]) procesarArchivo(e.target.files[0]);
 }
 
 async function procesarArchivo(file) {
-    const status = document.getElementById('uploadStatus');
+    const status  = document.getElementById('uploadStatus');
     const preview = document.getElementById('listaPreview');
     preview.style.display = 'none';
-    status.style.display = 'block';
-    status.className = 'upload-status loading';
-    status.innerHTML = '⏳ Analizando documento con IA…';
+    status.style.display  = 'block';
+    status.className      = 'upload-status loading';
+    status.innerHTML      = '⏳ Analizando documento con IA…';
 
     try {
         const ext = file.name.split('.').pop().toLowerCase();
@@ -32,164 +225,197 @@ async function procesarArchivo(file) {
 
         if (ext === 'txt') {
             nombres = await extraerDesdeTxt(file);
-        } else if (ext === 'pdf' || ext === 'docx' || ['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+        } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
             nombres = await extraerConClaude(file, ext);
         } else {
             throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
         }
 
-        if (nombres.length === 0) throw new Error('No se encontraron nombres en el documento.');
-
+        if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
 
         status.className = 'upload-status success';
-        status.innerHTML = `✅ Se encontraron <strong>${nombres.length}</strong> alumnos en "${file.name}"`;
-
+        status.innerHTML = `✅ ${nombres.length} alumnos encontrados en "${file.name}"`;
     } catch (err) {
         status.className = 'upload-status error';
         status.innerHTML = `❌ ${err.message}`;
     }
 }
 
-// ─── TXT: extracción local ────────────────────────────────────────
 function extraerDesdeTxt(file) {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => {
-            const lineas = e.target.result.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-            resolve(lineas);
-        };
-        reader.onerror = () => reject(new Error('No se pudo leer el archivo de texto.'));
-        reader.readAsText(file);
+        const r = new FileReader();
+        r.onload  = e => resolve(e.target.result.split('\n').map(l => l.trim()).filter(l => l.length > 1));
+        r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+        r.readAsText(file);
     });
 }
 
-// ─── PDF / DOCX / Imagen: Claude API ────────────────────────────
 async function extraerConClaude(file, ext) {
     const base64 = await fileToBase64(file);
+    const isImg  = ['jpg','jpeg','png','webp'].includes(ext);
+    const mime   = isImg
+        ? (ext === 'jpg' ? 'image/jpeg' : `image/${ext}`)
+        : (ext === 'pdf' ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
-    let mediaType;
-    let contentBlock;
+    const contentBlock = isImg
+        ? { type: 'image',    source: { type: 'base64', media_type: mime, data: base64 } }
+        : { type: 'document', source: { type: 'base64', media_type: mime, data: base64 } };
 
-    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
-        mediaType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-        contentBlock = {
-            type: 'image',
-            source: { type: 'base64', media_type: mediaType, data: base64 }
-        };
-    } else {
-        // PDF y DOCX se envían como documento
-        mediaType = ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        contentBlock = {
-            type: 'document',
-            source: { type: 'base64', media_type: mediaType, data: base64 }
-        };
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
             max_tokens: 1000,
-            system: `Eres un extractor de nombres de personas. 
-Analiza el documento y devuelve ÚNICAMENTE una lista JSON de nombres completos encontrados, sin ningún texto adicional, sin markdown, sin explicaciones.
-Formato exacto: ["Nombre1", "Nombre2", "Nombre3"]
-Si no encuentras nombres, devuelve: []`,
-            messages: [{
-                role: 'user',
-                content: [
-                    contentBlock,
-                    { type: 'text', text: 'Extrae todos los nombres de personas de este documento y devuélvelos como JSON.' }
-                ]
-            }]
+            system: `Eres un extractor de nombres de personas.
+Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks.
+Ejemplo: ["Ana García","Pedro López"]
+Si no hay nombres: []`,
+            messages: [{ role: 'user', content: [
+                contentBlock,
+                { type: 'text', text: 'Extrae todos los nombres de personas de este documento.' }
+            ]}],
         })
     });
-
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || 'Error al conectar con la IA.');
-    }
-
-    const data = await response.json();
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Error con la IA.'); }
+    const data  = await res.json();
     const texto = data.content.map(b => b.text || '').join('').trim();
-
     try {
         const parsed = JSON.parse(texto);
-        if (!Array.isArray(parsed)) throw new Error();
-        return parsed.filter(n => typeof n === 'string' && n.trim().length > 0);
-    } catch {
-        throw new Error('La IA no devolvió una lista válida de nombres.');
-    }
+        if (!Array.isArray(parsed)) throw 0;
+        return parsed.filter(n => typeof n === 'string' && n.trim());
+    } catch { throw new Error('La IA no devolvió una lista válida.'); }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result.split(',')[1]);
-        reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
-        reader.readAsDataURL(file);
+        const r = new FileReader();
+        r.onload  = e => resolve(e.target.result.split(',')[1]);
+        r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+        r.readAsDataURL(file);
     });
 }
 
-// ─── Preview de alumnos detectados ───────────────────────────────
 function mostrarPreview(nombres) {
-    const preview = document.getElementById('listaPreview');
-    const chips = document.getElementById('alumnosDetectados');
-    const textarea = document.getElementById('editarAlumnos');
     document.getElementById('countAlumnos').textContent = nombres.length;
-
-    chips.innerHTML = nombres.map(n => `<span class="chip-preview">${n}</span>`).join('');
-    textarea.value = nombres.join('\n');
-    preview.style.display = 'block';
+    document.getElementById('alumnosDetectados').innerHTML =
+        nombres.map(n => `<span class="chip-preview">${n}</span>`).join('');
+    document.getElementById('editarAlumnos').value = nombres.join('\n');
+    document.getElementById('listaPreview').style.display = 'block';
 }
 
 function usarAlumnos() {
-    const textarea = document.getElementById('editarAlumnos');
-    const nuevos = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+    const nuevos = document.getElementById('editarAlumnos').value
+        .split('\n').map(l => l.trim()).filter(l => l.length > 1);
     nuevos.sort((a, b) => a.localeCompare(b, 'es'));
-
     alumnos = nuevos;
     actualizarListaActiva();
     inicializarSelect();
-
     document.getElementById('listaPreview').style.display = 'none';
-    document.getElementById('uploadStatus').className = 'upload-status success';
-    document.getElementById('uploadStatus').innerHTML = `✅ Lista activa con <strong>${alumnos.length}</strong> alumnos.`;
+    document.getElementById('uploadStatus').className     = 'upload-status success';
+    document.getElementById('uploadStatus').innerHTML     =
+        `✅ Lista activa con <strong>${alumnos.length}</strong> alumnos.`;
 }
 
 function actualizarListaActiva() {
     const div = document.getElementById('listaActiva');
-    if (alumnos.length === 0) {
-        div.innerHTML = '<span class="chip-inactive">Sin alumnos cargados</span>';
-    } else {
-        div.innerHTML = alumnos.map(n => `<span class="chip-activo">${n}</span>`).join('');
-    }
+    div.innerHTML = alumnos.length
+        ? alumnos.map(n => `<span class="chip-activo">${n}</span>`).join('')
+        : '<span class="chip-inactive">Sin alumnos cargados</span>';
 }
 
-// ─── Select de compañeros ─────────────────────────────────────────
 function inicializarSelect() {
-    const select = document.getElementById('compañero');
+    const select = document.getElementById('companero');
     select.innerHTML = '<option value="">-- Sin preferencia --</option>';
-    const nombre = document.getElementById('nombre').value.trim();
+    alumnos.forEach(a => {
+        if (a !== (usuarioActual?.nombre ?? '')) {
+            const o = document.createElement('option');
+            o.value = o.textContent = a;
+            select.appendChild(o);
+        }
+    });
+}
 
-    if (nombre && alumnos.length > 0) {
-        alumnos.forEach(alumno => {
-            if (alumno !== nombre) {
-                const option = document.createElement('option');
-                option.value = alumno;
-                option.textContent = alumno;
-                select.appendChild(option);
-            }
-        });
+// ══════════════════════════════════════════════════════════════════
+//  GUARDAR VOTO + EMPAREJAR
+// ══════════════════════════════════════════════════════════════════
+async function guardarYEmparejar() {
+    if (!usuarioActual)  { alert('Inicia sesión primero.'); return; }
+    if (!alumnos.length) { alert('Carga primero la lista de alumnos.'); return; }
+
+    const preferencia = document.getElementById('companero').value.trim();
+    const st          = document.getElementById('sheetsStatus');
+
+    st.style.display = 'block';
+    st.className     = 'upload-status loading';
+    st.innerHTML     = '⏳ Guardando preferencia en Google Sheets…';
+
+    try {
+        // 1. Guardar voto
+        await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencia);
+
+        st.className = 'upload-status success';
+        st.innerHTML = '✅ Preferencia guardada. Calculando grupos…';
+
+        // 2. Leer todos los votos
+        const votos = await leerVotos();
+
+        // 3. Calcular y mostrar grupos
+        const grupos = calcularGrupos(alumnos, votos);
+        mostrarResultado(grupos, votos);
+
+    } catch (err) {
+        st.className = 'upload-status error';
+        st.innerHTML = `❌ ${err.message}`;
     }
 }
 
-document.getElementById('nombre').addEventListener('input', inicializarSelect);
+// ══════════════════════════════════════════════════════════════════
+//  ALGORITMO DE EMPAREJAMIENTO
+//
+//  1. Detectar pares mutuos → mismo grupo
+//  2. No coincididos + sin preferencia → pool aleatorio
+//  3. Rellenar grupos hasta 30; crear nuevos si hace falta
+// ══════════════════════════════════════════════════════════════════
+function calcularGrupos(listaAlumnos, votos) {
+    const prefs = {};
+    listaAlumnos.forEach(a => {
+        prefs[a] = votos[a]?.preferencia ?? null;
+    });
 
-// ─── Shuffle ──────────────────────────────────────────────────────
+    const asignado = new Set();
+    const grupos   = [];
+
+    // Paso 1: pares mutuos
+    listaAlumnos.forEach(a => {
+        if (asignado.has(a)) return;
+        const b = prefs[a];
+        if (b && prefs[b] === a && !asignado.has(b)) {
+            asignado.add(a);
+            asignado.add(b);
+            grupos.push([a, b]);
+        }
+    });
+
+    // Paso 2 & 3: pool = no coincididos + sin preferencia (mezclados)
+    const pool = shuffle(listaAlumnos.filter(a => !asignado.has(a)));
+
+    let grupoAbierto = grupos.find(g => g.length < TAMAÑO_GRUPO) ?? null;
+
+    pool.forEach(a => {
+        if (!grupoAbierto || grupoAbierto.length >= TAMAÑO_GRUPO) {
+            grupoAbierto = [];
+            grupos.push(grupoAbierto);
+        }
+        grupoAbierto.push(a);
+    });
+
+    return grupos;
+}
+
 function shuffle(arr) {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -199,63 +425,31 @@ function shuffle(arr) {
     return a;
 }
 
-// ─── Errores ──────────────────────────────────────────────────────
-function limpiarErrores() {
-    document.getElementById('errorNombre').classList.remove('show');
-    document.getElementById('errorCompañero').classList.remove('show');
-}
+// ══════════════════════════════════════════════════════════════════
+//  MOSTRAR RESULTADO
+// ══════════════════════════════════════════════════════════════════
+function mostrarResultado(grupos, votos) {
+    const miNombre = usuarioActual?.nombre ?? '';
+    const nVotaron = Object.keys(votos).length;
 
-function mostrarError(id, mensaje) {
-    const el = document.getElementById(id);
-    el.textContent = mensaje;
-    el.classList.add('show');
-}
-
-// ─── Emparejar ────────────────────────────────────────────────────
-function emparejar() {
-    limpiarErrores();
-
-    if (alumnos.length === 0) {
-        alert('Primero carga una lista de alumnos desde un documento.');
-        return;
-    }
-
-    const nombre = document.getElementById('nombre').value.trim();
-    const compañero = document.getElementById('compañero').value.trim();
-
-    if (!nombre) { mostrarError('errorNombre', 'Por favor, introduce tu nombre'); return; }
-    if (compañero && !alumnos.includes(compañero)) { mostrarError('errorCompañero', 'El compañero seleccionado no existe'); return; }
-
-    // El usuario puede no estar en la lista; se elimina si aparece para evitar duplicados
-    let mezclados = alumnos.filter(a => a !== nombre);
-    const grupos = [];
-
-    if (compañero) {
-        if (!mezclados.includes(compañero)) { mostrarError('errorCompañero', 'El compañero no está disponible'); return; }
-        mezclados = mezclados.filter(a => a !== compañero);
-        grupos.push([nombre, compañero]);
-    } else {
-        grupos.push([nombre, mezclados[0]]);
-        mezclados = mezclados.slice(1);
-    }
-
-    mezclados = shuffle(mezclados);
-    for (let i = 0; i < mezclados.length; i += 2) {
-        grupos.push(mezclados.slice(i, i + 2));
-    }
-
-    let html = `<div class="resultado-titulo">✓ Grupos creados</div>
+    let html = `<div class="resultado-titulo">✓ Grupos calculados</div>
     <div class="stats">
         <div class="stat"><div class="stat-label">Grupos</div><div class="stat-value">${grupos.length}</div></div>
-        <div class="stat"><div class="stat-label">Por grupo</div><div class="stat-value">2</div></div>
-        <div class="stat"><div class="stat-label">Total</div><div class="stat-value">${alumnos.length}</div></div>
+        <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${TAMAÑO_GRUPO}</div></div>
+        <div class="stat"><div class="stat-label">Han votado</div><div class="stat-value">${nVotaron}</div></div>
     </div><div id="grupos">`;
 
     grupos.forEach((g, i) => {
-        const delay = i * 60;
-        html += `<div class="grupo-card" style="animation-delay:${delay}ms">
-            <div class="grupo-titulo">Grupo ${i + 1}</div>
-            <div class="chips">${g.map((n, j) => `<span class="chip" style="animation-delay:${delay + j * 40}ms">${n}</span>`).join('')}</div>
+        const esMiGrupo = g.includes(miNombre);
+        const delay     = i * 60;
+        html += `<div class="grupo-card${esMiGrupo ? ' mi-grupo' : ''}" style="animation-delay:${delay}ms">
+            <div class="grupo-titulo">Grupo ${i + 1}${esMiGrupo ? ' ⭐' : ''}</div>
+            <div class="chips">${g.map((n, j) => {
+                const esMutuo = votos[n]?.preferencia && votos[votos[n].preferencia]?.preferencia === n;
+                return `<span class="chip${n === miNombre ? ' chip-yo' : ''}" style="animation-delay:${delay + j * 40}ms">
+                    ${n}${esMutuo ? ' 🤝' : ''}
+                </span>`;
+            }).join('')}</div>
         </div>`;
     });
 
@@ -263,15 +457,11 @@ function emparejar() {
     document.getElementById('resultado').innerHTML = html;
 }
 
-// ─── Resetear ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  RESETEAR
+// ══════════════════════════════════════════════════════════════════
 function resetear() {
-    document.getElementById('nombre').value = '';
-    document.getElementById('compañero').value = '';
-    document.getElementById('resultado').innerHTML = '';
-    limpiarErrores();
-    inicializarSelect();
+    document.getElementById('companero').value             = '';
+    document.getElementById('resultado').innerHTML         = '';
+    document.getElementById('sheetsStatus').style.display = 'none';
 }
-
-// ─── Enter ───────────────────────────────────────────────────────
-document.getElementById('compañero').addEventListener('keypress', e => { if (e.key === 'Enter') emparejar(); });
-document.getElementById('nombre').addEventListener('keypress', e => { if (e.key === 'Enter') emparejar(); });
