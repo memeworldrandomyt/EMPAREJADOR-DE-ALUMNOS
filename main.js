@@ -1,44 +1,42 @@
 // ══════════════════════════════════════════════════════════════════
-//  CONFIGURACIÓN — rellena con tus datos de Google Cloud Console
+//  CONFIGURACIÓN
 // ══════════════════════════════════════════════════════════════════
 const CONFIG = {
-    clientId:      '490204576711-mjpqqt3pjsh5nf9udo4272719eedhjvb.apps.googleusercontent.com',  // OAuth 2.0 Client ID
-    apiKey:        'AIzaSyDDg3DGAtuEqaDusmJxlmjmLfy40og0ccQ',                                // API Key (para Sheets)
-    spreadsheetId: '1JAFWVUenNEDssEPo9mb4Ni4YzKcZlAAf4dxEDDNSnA8',                        // ID del Google Sheet compartido
-    sheetName:     'Votos',                                     // Nombre de la hoja
+    clientId:      '490204576711-mjpqqt3pjsh5nf9udo4272719eedhjvb.apps.googleusercontent.com',
+    apiKey:        'AIzaSyDDg3DGAtuEqaDusmJxlmjmLfy40og0ccQ',
+    spreadsheetId: '1JAFWVUenNEDssEPo9mb4Ni4YzKcZlAAf4dxEDDNSnA8',
+    sheetVotos:    'Votos',
+    sheetConfig:   'Config',   // hoja para guardar lista y tamaño de grupo
 };
 
 const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
-const TAMAÑO_GRUPO  = 30;
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+const CODIGO_PROF   = 'PR0F3SOR';
 
 // ── Estado ────────────────────────────────────────────────────────
-let tokenClient    = null;
-let accessToken    = null;
-let usuarioActual  = null;   // { nombre, email, foto }
-let alumnos        = [];
+let tokenClient   = null;
+let accessToken   = null;
+let usuarioActual = null;
+let alumnos       = [];
+let tamañoGrupo   = 30;
+let modoProfesor  = false;
 
 // ══════════════════════════════════════════════════════════════════
-//  INICIALIZACIÓN — esperar a que carguen las librerías de Google
+//  INICIALIZACIÓN
 // ══════════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
-    // Cargar gapi (Sheets)
     gapi.load('client', async () => {
         await gapi.client.init({
-            apiKey:      CONFIG.apiKey,
+            apiKey:        CONFIG.apiKey,
             discoveryDocs: [DISCOVERY_DOC],
         });
     });
 
-    // Inicializar Google Identity token client
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CONFIG.clientId,
         scope:     SCOPES,
         callback:  async (resp) => {
-            if (resp.error) {
-                mostrarLoginError('Error de autenticación: ' + resp.error);
-                return;
-            }
+            if (resp.error) { mostrarLoginError('Error de autenticación: ' + resp.error); return; }
             accessToken = resp.access_token;
             gapi.client.setToken({ access_token: accessToken });
             await cargarPerfilUsuario();
@@ -55,74 +53,152 @@ function iniciarSesion() {
 }
 
 function cerrarSesion() {
-    if (accessToken) {
-        google.accounts.oauth2.revoke(accessToken, () => {});
-    }
-    accessToken   = null;
-    usuarioActual = null;
+    if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+    accessToken = null; usuarioActual = null; modoProfesor = false;
     document.getElementById('pantallaApp').style.display   = 'none';
     document.getElementById('pantallaLogin').style.display = '';
 }
 
 async function cargarPerfilUsuario() {
     try {
-        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        const res    = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: 'Bearer ' + accessToken }
         });
         const perfil = await res.json();
-        usuarioActual = {
-            nombre: perfil.name  || perfil.email,
-            email:  perfil.email,
-            foto:   perfil.picture || '',
-        };
+        usuarioActual = { nombre: perfil.name || perfil.email, email: perfil.email, foto: perfil.picture || '' };
 
-        // Actualizar UI
         document.getElementById('userName').textContent  = usuarioActual.nombre;
         document.getElementById('userEmail').textContent = usuarioActual.email;
 
         const avatarImg      = document.getElementById('userAvatar');
         const avatarFallback = document.getElementById('userAvatarFallback');
         if (usuarioActual.foto) {
-            avatarImg.src          = usuarioActual.foto;
-            avatarImg.style.display = '';
-            avatarFallback.style.display = 'none';
+            avatarImg.src = usuarioActual.foto; avatarImg.style.display = ''; avatarFallback.style.display = 'none';
         } else {
-            avatarImg.style.display      = 'none';
-            avatarFallback.style.display = '';
-            avatarFallback.textContent   = usuarioActual.nombre[0].toUpperCase();
+            avatarImg.style.display = 'none'; avatarFallback.style.display = '';
+            avatarFallback.textContent = usuarioActual.nombre[0].toUpperCase();
         }
 
         document.getElementById('pantallaLogin').style.display = 'none';
         document.getElementById('pantallaApp').style.display   = '';
 
-        // Pre-cargar votos existentes si hay lista activa
-        inicializarSelect();
-    } catch (err) {
-        mostrarLoginError('No se pudo obtener el perfil: ' + err.message);
-    }
+        // Cargar configuración guardada (lista + tamaño) desde Sheets
+        await cargarConfigDesdeSheets();
+
+    } catch (err) { mostrarLoginError('No se pudo obtener el perfil: ' + err.message); }
 }
 
 function mostrarLoginError(msg) {
     const el = document.getElementById('loginError');
-    el.textContent = msg;
-    el.style.display = msg ? 'block' : 'none';
+    el.textContent = msg; el.style.display = msg ? 'block' : 'none';
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS — leer y escribir
+//  MODO PROFESOR
+// ══════════════════════════════════════════════════════════════════
+function validarProfesor() {
+    const input = document.getElementById('codigoProfesor');
+    const error = document.getElementById('errorCodigo');
+
+    if (input.value === CODIGO_PROF) {
+        modoProfesor = true;
+        input.value  = '';
+        error.style.display = 'none';
+        document.getElementById('panelProfesor').style.display = '';
+        document.getElementById('accesoProfesor').style.display = 'none';
+        // Actualizar el control de tamaño con el valor actual
+        document.getElementById('tamañoValor').textContent = tamañoGrupo;
+    } else {
+        error.style.display = 'block';
+        input.value = '';
+        input.focus();
+        setTimeout(() => { error.style.display = 'none'; }, 2000);
+    }
+}
+
+function cerrarModoProfesor() {
+    modoProfesor = false;
+    document.getElementById('panelProfesor').style.display   = 'none';
+    document.getElementById('accesoProfesor').style.display  = '';
+    document.getElementById('codigoProfesor').value          = '';
+}
+
+function cambiarTamaño(delta) {
+    tamañoGrupo = Math.max(2, Math.min(100, tamañoGrupo + delta));
+    document.getElementById('tamañoValor').textContent    = tamañoGrupo;
+    document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — Config (lista + tamaño de grupo)
 // ══════════════════════════════════════════════════════════════════
 
-// Estructura del Sheet:
-// Columna A: email
-// Columna B: nombre
-// Columna C: preferencia (nombre elegido o vacío)
-// Columna D: timestamp
+async function cargarConfigDesdeSheets() {
+    try {
+        const res  = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range:         `${CONFIG.sheetConfig}!A1:B`,
+        });
+        const filas = res.result.values || [];
 
+        let nuevoTamaño  = 30;
+        let nuevosAlumnos = [];
+
+        filas.forEach(fila => {
+            if (!fila[0]) return;
+            if (fila[0] === '__TAMAÑO__' && fila[1]) {
+                nuevoTamaño = parseInt(fila[1]) || 30;
+            } else if (fila[0] !== '__TAMAÑO__' && fila[0].trim()) {
+                nuevosAlumnos.push(fila[0].trim());
+            }
+        });
+
+        tamañoGrupo = nuevoTamaño;
+        alumnos     = nuevosAlumnos;
+
+        document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
+        document.getElementById('tamañoValor').textContent     = tamañoGrupo;
+        actualizarListaActiva();
+        inicializarSelect();
+
+    } catch (err) {
+        // La hoja Config aún no existe → valores por defecto
+        console.log('Config no encontrada, usando valores por defecto:', err.message);
+    }
+}
+
+async function guardarConfigEnSheets() {
+    // Fila 1: __TAMAÑO__ | valor
+    // Filas 2+: nombre alumno
+    const valores = [
+        ['__TAMAÑO__', tamañoGrupo],
+        ...alumnos.map(n => [n])
+    ];
+
+    await asegurarHoja(CONFIG.sheetConfig);
+
+    // Limpiar hoja y reescribir
+    await gapi.client.sheets.spreadsheets.values.clear({
+        spreadsheetId: CONFIG.spreadsheetId,
+        range:         `${CONFIG.sheetConfig}!A:B`,
+    });
+
+    await gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId:    CONFIG.spreadsheetId,
+        range:            `${CONFIG.sheetConfig}!A1`,
+        valueInputOption: 'RAW',
+        resource:         { values: valores },
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — Votos
+// ══════════════════════════════════════════════════════════════════
 async function leerVotos() {
     try {
-        const res = await gapi.client.sheets.spreadsheets.values.get({
+        const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range: `${CONFIG.sheetName}!A2:D`,
+            range:         `${CONFIG.sheetVotos}!A2:D`,
         });
         const filas = res.result.values || [];
         const votos = {};
@@ -132,78 +208,101 @@ async function leerVotos() {
         });
         return votos;
     } catch (err) {
-        // Si la hoja está vacía o no existe aún
         if (err.status === 400 || err.status === 404) return {};
-        throw new Error('Error leyendo Google Sheets: ' + (err.result?.error?.message || err.message));
+        throw new Error('Error leyendo votos: ' + (err.result?.error?.message || err.message));
     }
 }
 
 async function escribirVoto(nombre, email, preferencia) {
-    // 1. Buscar si ya existe una fila para este usuario
     let filaExistente = null;
     try {
-        const res = await gapi.client.sheets.spreadsheets.values.get({
+        const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range: `${CONFIG.sheetName}!A2:B`,
+            range:         `${CONFIG.sheetVotos}!A2:B`,
         });
         const filas = res.result.values || [];
         filas.forEach((fila, i) => {
-            if (fila[1] === nombre || fila[0] === email) {
-                filaExistente = i + 2; // +2 porque empezamos en fila 2
-            }
+            if (fila[1] === nombre || fila[0] === email) filaExistente = i + 2;
         });
-    } catch { /* hoja vacía */ }
+    } catch { /* vacía */ }
 
     const valores = [[email, nombre, preferencia || '', new Date().toISOString()]];
 
     if (filaExistente) {
-        // Actualizar fila existente
         await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId:     CONFIG.spreadsheetId,
-            range:             `${CONFIG.sheetName}!A${filaExistente}:D${filaExistente}`,
-            valueInputOption:  'RAW',
-            resource:          { values: valores },
+            spreadsheetId:    CONFIG.spreadsheetId,
+            range:            `${CONFIG.sheetVotos}!A${filaExistente}:D${filaExistente}`,
+            valueInputOption: 'RAW',
+            resource:         { values: valores },
         });
     } else {
-        // Crear cabecera si la hoja está vacía
-        await asegurarCabecera();
-        // Añadir nueva fila
+        await asegurarCabeceraVotos();
         await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId:     CONFIG.spreadsheetId,
-            range:             `${CONFIG.sheetName}!A:D`,
-            valueInputOption:  'RAW',
-            insertDataOption:  'INSERT_ROWS',
-            resource:          { values: valores },
+            spreadsheetId:    CONFIG.spreadsheetId,
+            range:            `${CONFIG.sheetVotos}!A:D`,
+            valueInputOption: 'RAW',
+            insertDataOption: 'INSERT_ROWS',
+            resource:         { values: valores },
         });
     }
 }
 
-async function asegurarCabecera() {
+async function asegurarCabeceraVotos() {
     try {
         const res = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range: `${CONFIG.sheetName}!A1:D1`,
+            range:         `${CONFIG.sheetVotos}!A1:D1`,
         });
-        if (!res.result.values || !res.result.values[0]) {
+        if (!res.result.values?.[0]) {
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId:    CONFIG.spreadsheetId,
-                range:            `${CONFIG.sheetName}!A1:D1`,
+                range:            `${CONFIG.sheetVotos}!A1:D1`,
                 valueInputOption: 'RAW',
-                resource: { values: [['Email', 'Nombre', 'Preferencia', 'Timestamp']] },
+                resource:         { values: [['Email','Nombre','Preferencia','Timestamp']] },
             });
         }
     } catch { /* ignorar */ }
 }
 
+async function asegurarHoja(nombre) {
+    try {
+        // Intentar leer — si no existe lanzará error
+        await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range:         `${nombre}!A1`,
+        });
+    } catch {
+        // Crear la hoja
+        await gapi.client.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: CONFIG.spreadsheetId,
+            resource: { requests: [{ addSheet: { properties: { title: nombre } } }] },
+        });
+    }
+}
+
+async function resetearVotos() {
+    if (!confirm('¿Seguro que quieres borrar todos los votos? Esta acción no se puede deshacer.')) return;
+    try {
+        await gapi.client.sheets.spreadsheets.values.clear({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range:         `${CONFIG.sheetVotos}!A2:D`,
+        });
+        document.getElementById('resultado').innerHTML         = '';
+        document.getElementById('sheetsStatus').style.display = 'none';
+        alert('✅ Votos borrados correctamente.');
+    } catch (err) {
+        alert('❌ Error al borrar votos: ' + err.message);
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════
-//  CARGA DE DOCUMENTO
+//  CARGA DE DOCUMENTO (solo profesor)
 // ══════════════════════════════════════════════════════════════════
 const uploadArea = document.getElementById('uploadArea');
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
 uploadArea.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadArea.classList.remove('drag-over');
+    e.preventDefault(); uploadArea.classList.remove('drag-over');
     if (e.dataTransfer.files[0]) procesarArchivo(e.dataTransfer.files[0]);
 });
 
@@ -220,9 +319,8 @@ async function procesarArchivo(file) {
     status.innerHTML      = '⏳ Analizando documento con IA…';
 
     try {
-        const ext = file.name.split('.').pop().toLowerCase();
-        let nombres = [];
-
+        const ext    = file.name.split('.').pop().toLowerCase();
+        let nombres  = [];
         if (ext === 'txt') {
             nombres = await extraerDesdeTxt(file);
         } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
@@ -230,11 +328,9 @@ async function procesarArchivo(file) {
         } else {
             throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
         }
-
         if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
-
         status.className = 'upload-status success';
         status.innerHTML = `✅ ${nombres.length} alumnos encontrados en "${file.name}"`;
     } catch (err) {
@@ -259,7 +355,6 @@ async function extraerConClaude(file, ext) {
         ? (ext === 'jpg' ? 'image/jpeg' : `image/${ext}`)
         : (ext === 'pdf' ? 'application/pdf'
             : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-
     const contentBlock = isImg
         ? { type: 'image',    source: { type: 'base64', media_type: mime, data: base64 } }
         : { type: 'document', source: { type: 'base64', media_type: mime, data: base64 } };
@@ -268,8 +363,7 @@ async function extraerConClaude(file, ext) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
+            model: 'claude-sonnet-4-20250514', max_tokens: 1000,
             system: `Eres un extractor de nombres de personas.
 Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks.
 Ejemplo: ["Ana García","Pedro López"]
@@ -307,24 +401,35 @@ function mostrarPreview(nombres) {
     document.getElementById('listaPreview').style.display = 'block';
 }
 
-function usarAlumnos() {
+async function usarAlumnos() {
     const nuevos = document.getElementById('editarAlumnos').value
         .split('\n').map(l => l.trim()).filter(l => l.length > 1);
     nuevos.sort((a, b) => a.localeCompare(b, 'es'));
     alumnos = nuevos;
-    actualizarListaActiva();
-    inicializarSelect();
-    document.getElementById('listaPreview').style.display = 'none';
-    document.getElementById('uploadStatus').className     = 'upload-status success';
-    document.getElementById('uploadStatus').innerHTML     =
-        `✅ Lista activa con <strong>${alumnos.length}</strong> alumnos.`;
+
+    const status = document.getElementById('uploadStatus');
+    status.className = 'upload-status loading';
+    status.innerHTML = '⏳ Guardando lista y configuración en Google Sheets…';
+
+    try {
+        await guardarConfigEnSheets();
+        actualizarListaActiva();
+        inicializarSelect();
+        document.getElementById('listaPreview').style.display = 'none';
+        status.className = 'upload-status success';
+        status.innerHTML = `✅ Lista publicada con <strong>${alumnos.length}</strong> alumnos. Tamaño de grupo: <strong>${tamañoGrupo}</strong>.`;
+    } catch (err) {
+        status.className = 'upload-status error';
+        status.innerHTML = `❌ Error guardando: ${err.message}`;
+    }
 }
 
 function actualizarListaActiva() {
     const div = document.getElementById('listaActiva');
     div.innerHTML = alumnos.length
         ? alumnos.map(n => `<span class="chip-activo">${n}</span>`).join('')
-        : '<span class="chip-inactive">Sin alumnos cargados</span>';
+        : '<span class="chip-inactive">El profesor aún no ha cargado la lista</span>';
+    document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
 }
 
 function inicializarSelect() {
@@ -344,29 +449,22 @@ function inicializarSelect() {
 // ══════════════════════════════════════════════════════════════════
 async function guardarYEmparejar() {
     if (!usuarioActual)  { alert('Inicia sesión primero.'); return; }
-    if (!alumnos.length) { alert('Carga primero la lista de alumnos.'); return; }
+    if (!alumnos.length) { alert('El profesor aún no ha publicado la lista de alumnos.'); return; }
 
     const preferencia = document.getElementById('companero').value.trim();
     const st          = document.getElementById('sheetsStatus');
-
     st.style.display = 'block';
     st.className     = 'upload-status loading';
     st.innerHTML     = '⏳ Guardando preferencia en Google Sheets…';
 
     try {
-        // 1. Guardar voto
         await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencia);
-
         st.className = 'upload-status success';
         st.innerHTML = '✅ Preferencia guardada. Calculando grupos…';
 
-        // 2. Leer todos los votos
-        const votos = await leerVotos();
-
-        // 3. Calcular y mostrar grupos
+        const votos  = await leerVotos();
         const grupos = calcularGrupos(alumnos, votos);
         mostrarResultado(grupos, votos);
-
     } catch (err) {
         st.className = 'upload-status error';
         st.innerHTML = `❌ ${err.message}`;
@@ -375,16 +473,10 @@ async function guardarYEmparejar() {
 
 // ══════════════════════════════════════════════════════════════════
 //  ALGORITMO DE EMPAREJAMIENTO
-//
-//  1. Detectar pares mutuos → mismo grupo
-//  2. No coincididos + sin preferencia → pool aleatorio
-//  3. Rellenar grupos hasta 30; crear nuevos si hace falta
 // ══════════════════════════════════════════════════════════════════
 function calcularGrupos(listaAlumnos, votos) {
     const prefs = {};
-    listaAlumnos.forEach(a => {
-        prefs[a] = votos[a]?.preferencia ?? null;
-    });
+    listaAlumnos.forEach(a => { prefs[a] = votos[a]?.preferencia ?? null; });
 
     const asignado = new Set();
     const grupos   = [];
@@ -394,21 +486,18 @@ function calcularGrupos(listaAlumnos, votos) {
         if (asignado.has(a)) return;
         const b = prefs[a];
         if (b && prefs[b] === a && !asignado.has(b)) {
-            asignado.add(a);
-            asignado.add(b);
+            asignado.add(a); asignado.add(b);
             grupos.push([a, b]);
         }
     });
 
-    // Paso 2 & 3: pool = no coincididos + sin preferencia (mezclados)
+    // Paso 2: resto en pool aleatorio
     const pool = shuffle(listaAlumnos.filter(a => !asignado.has(a)));
-
-    let grupoAbierto = grupos.find(g => g.length < TAMAÑO_GRUPO) ?? null;
+    let grupoAbierto = grupos.find(g => g.length < tamañoGrupo) ?? null;
 
     pool.forEach(a => {
-        if (!grupoAbierto || grupoAbierto.length >= TAMAÑO_GRUPO) {
-            grupoAbierto = [];
-            grupos.push(grupoAbierto);
+        if (!grupoAbierto || grupoAbierto.length >= tamañoGrupo) {
+            grupoAbierto = []; grupos.push(grupoAbierto);
         }
         grupoAbierto.push(a);
     });
@@ -435,7 +524,7 @@ function mostrarResultado(grupos, votos) {
     let html = `<div class="resultado-titulo">✓ Grupos calculados</div>
     <div class="stats">
         <div class="stat"><div class="stat-label">Grupos</div><div class="stat-value">${grupos.length}</div></div>
-        <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${TAMAÑO_GRUPO}</div></div>
+        <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${tamañoGrupo}</div></div>
         <div class="stat"><div class="stat-label">Han votado</div><div class="stat-value">${nVotaron}</div></div>
     </div><div id="grupos">`;
 
@@ -458,7 +547,7 @@ function mostrarResultado(grupos, votos) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  RESETEAR
+//  RESETEAR (alumno)
 // ══════════════════════════════════════════════════════════════════
 function resetear() {
     document.getElementById('companero').value             = '';
