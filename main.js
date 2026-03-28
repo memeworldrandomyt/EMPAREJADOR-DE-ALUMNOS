@@ -12,14 +12,16 @@ const CONFIG = {
 const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const CODIGO_PROF   = 'PR0F3SOR';
+const POLL_INTERVAL = 10000; // 10 segundos
 
 // ── Estado ────────────────────────────────────────────────────────
-let tokenClient   = null;
-let accessToken   = null;
-let usuarioActual = null;
-let alumnos       = [];
-let tamañoGrupo   = 30;
-let modoProfesor  = false;
+let tokenClient    = null;
+let accessToken    = null;
+let usuarioActual  = null;
+let alumnos        = [];
+let tamañoGrupo    = 30;
+let modoProfesor   = false;
+let pollTimer      = null;
 
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
@@ -53,6 +55,7 @@ function iniciarSesion() {
 }
 
 function cerrarSesion() {
+    detenerPoll();
     if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = null; usuarioActual = null; modoProfesor = false;
     document.getElementById('pantallaApp').style.display   = 'none';
@@ -116,6 +119,9 @@ function validarProfesor() {
         document.getElementById('panelProfesor').style.display  = '';
         document.getElementById('accesoProfesor').style.display = 'none';
         document.getElementById('tamañoValor').textContent      = tamañoGrupo;
+        // Cargar votos inmediatamente y arrancar el poll
+        actualizarVotosProfesor();
+        arrancarPoll();
     } else {
         error.style.display = 'block';
         input.value = '';
@@ -126,6 +132,7 @@ function validarProfesor() {
 
 function cerrarModoProfesor() {
     modoProfesor = false;
+    detenerPoll();
     document.getElementById('panelProfesor').style.display  = 'none';
     document.getElementById('accesoProfesor').style.display = '';
     document.getElementById('codigoProfesor').value         = '';
@@ -138,8 +145,44 @@ function cambiarTamaño(delta) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS — Config (lista + tamaño de grupo)
-//  ⚠️ Las hojas "Votos" y "Config" deben existir ya en el Sheet
+//  POLLING (contador de votos en tiempo real)
+// ══════════════════════════════════════════════════════════════════
+function arrancarPoll() {
+    detenerPoll();
+    pollTimer = setInterval(actualizarVotosProfesor, POLL_INTERVAL);
+}
+
+function detenerPoll() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function actualizarVotosProfesor() {
+    if (!modoProfesor) return;
+    try {
+        const votos    = await leerVotos();
+        const nVotos   = Object.keys(votos).length;
+        const nAlumnos = alumnos.length;
+
+        document.getElementById('votosNum').textContent  = nVotos;
+        document.getElementById('votosDe').textContent   = `/ ${nAlumnos} alumnos`;
+
+        const pct = nAlumnos > 0 ? Math.round((nVotos / nAlumnos) * 100) : 0;
+        document.getElementById('votosBarra').style.width = pct + '%';
+
+        // Lista de quién ha votado
+        const lista = document.getElementById('votosLista');
+        lista.innerHTML = Object.entries(votos).map(([nombre, v]) =>
+            `<span class="voto-chip">${nombre}${v.preferencia ? ` → ${v.preferencia}` : ' (sin pref.)'}</span>`
+        ).join('');
+    } catch { /* silencioso — el poll no debe romper la UI */ }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — Config
+//  Estructura de la hoja Config:
+//    Fila 1:  __TAMAÑO__ | valor
+//    Filas 2…N: nombre alumno
+//    Filas N+1…: __GRUPO_X__ | alumno1,alumno2,…
 // ══════════════════════════════════════════════════════════════════
 async function cargarConfigDesdeSheets() {
     try {
@@ -154,11 +197,13 @@ async function cargarConfigDesdeSheets() {
 
         filas.forEach(fila => {
             if (!fila[0]) return;
-            if (fila[0] === '__TAMAÑO__' && fila[1]) {
+            const clave = fila[0].trim();
+            if (clave === '__TAMAÑO__' && fila[1]) {
                 nuevoTamaño = parseInt(fila[1]) || 30;
-            } else if (fila[0] !== '__TAMAÑO__' && fila[0].trim()) {
-                nuevosAlumnos.push(fila[0].trim());
+            } else if (!clave.startsWith('__')) {
+                nuevosAlumnos.push(clave);
             }
+            // Las filas __GRUPO_X__ se ignoran aquí (son solo para el profe)
         });
 
         tamañoGrupo = nuevoTamaño;
@@ -170,26 +215,34 @@ async function cargarConfigDesdeSheets() {
         inicializarSelect();
 
     } catch (err) {
-        console.warn('Config no encontrada, usando valores por defecto:', err.message);
+        console.warn('Config no encontrada:', err.message);
     }
 }
 
-async function guardarConfigEnSheets() {
+async function guardarConfigEnSheets(grupos) {
+    // grupos es opcional — se pasa solo cuando el profe genera grupos
     const valores = [
         ['__TAMAÑO__', tamañoGrupo],
-        ...alumnos.map(n => [n])
+        ...alumnos.map(n => [n]),
     ];
 
-    // 1. Limpiar hoja Config
+    // Añadir grupos al final si se proporcionan
+    if (grupos && grupos.length > 0) {
+        grupos.forEach((g, i) => {
+            valores.push([`__GRUPO_${i + 1}__`, g.join(',')]);
+        });
+    }
+
+    // 1. Limpiar
     const resClear = await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
         range:         `${CONFIG.sheetConfig}!A:B`,
     });
     if (resClear.status !== 200) {
-        throw new Error(`No se pudo limpiar la hoja Config (${resClear.status}). ¿Existe la pestaña "Config" en el Sheet?`);
+        throw new Error(`Error al limpiar Config (${resClear.status}). ¿Existe la pestaña "Config"?`);
     }
 
-    // 2. Escribir datos nuevos
+    // 2. Escribir
     const resUpdate = await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:    CONFIG.spreadsheetId,
         range:            `${CONFIG.sheetConfig}!A1`,
@@ -197,7 +250,7 @@ async function guardarConfigEnSheets() {
         resource:         { values: valores },
     });
     if (resUpdate.status !== 200) {
-        throw new Error(`No se pudo escribir en la hoja Config (${resUpdate.status}).`);
+        throw new Error(`Error al escribir en Config (${resUpdate.status}).`);
     }
 }
 
@@ -224,7 +277,6 @@ async function leerVotos() {
 }
 
 async function escribirVoto(nombre, email, preferencia) {
-    // Buscar fila existente
     let filaExistente = null;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
@@ -247,7 +299,6 @@ async function escribirVoto(nombre, email, preferencia) {
             resource:         { values: valores },
         });
     } else {
-        // Asegurar cabecera en fila 1
         await asegurarCabeceraVotos();
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId:    CONFIG.spreadsheetId,
@@ -283,11 +334,14 @@ async function resetearVotos() {
             spreadsheetId: CONFIG.spreadsheetId,
             range:         `${CONFIG.sheetVotos}!A2:D`,
         });
-        document.getElementById('resultado').innerHTML         = '';
-        document.getElementById('sheetsStatus').style.display = 'none';
+        document.getElementById('seccionGrupos').style.display    = 'none';
+        document.getElementById('resultadoProfesor').innerHTML     = '';
+        document.getElementById('profesorStatus').style.display   = 'none';
+        await actualizarVotosProfesor();
         alert('✅ Votos borrados correctamente.');
     } catch (err) {
-        alert('❌ Error al borrar votos: ' + err.message);
+        const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
+        alert('❌ Error al borrar votos: ' + msg);
     }
 }
 
@@ -317,7 +371,6 @@ async function procesarArchivo(file) {
     try {
         const ext   = file.name.split('.').pop().toLowerCase();
         let nombres = [];
-
         if (ext === 'txt') {
             nombres = await extraerDesdeTxt(file);
         } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
@@ -325,15 +378,15 @@ async function procesarArchivo(file) {
         } else {
             throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
         }
-
         if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
         status.className = 'upload-status success';
         status.innerHTML = `✅ ${nombres.length} alumnos encontrados en "${file.name}"`;
     } catch (err) {
+        const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         status.className = 'upload-status error';
-        status.innerHTML = `❌ ${err.message}`;
+        status.innerHTML = `❌ ${msg}`;
     }
 }
 
@@ -412,14 +465,15 @@ async function usarAlumnos() {
     status.innerHTML     = '⏳ Guardando en Google Sheets…';
 
     try {
-        await guardarConfigEnSheets();
+        await guardarConfigEnSheets(null); // sin grupos todavía
         actualizarListaActiva();
         inicializarSelect();
         document.getElementById('listaPreview').style.display = 'none';
         status.className = 'upload-status success';
         status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong>.`;
+        // Actualizar contador de votos
+        await actualizarVotosProfesor();
     } catch (err) {
-        // Los errores de gapi tienen la estructura err.result.error.message
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         status.className = 'upload-status error';
         status.innerHTML = `❌ Error guardando: ${msg}`;
@@ -447,29 +501,62 @@ function inicializarSelect() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GUARDAR VOTO + EMPAREJAR
+//  ALUMNO: ENVIAR PREFERENCIA
 // ══════════════════════════════════════════════════════════════════
-async function guardarYEmparejar() {
+async function enviarPreferencia() {
     if (!usuarioActual)  { alert('Inicia sesión primero.'); return; }
-    if (!alumnos.length) { alert('El profesor aún no ha publicado la lista de alumnos.'); return; }
+    if (!alumnos.length) { alert('El profesor aún no ha publicado la lista.'); return; }
 
     const preferencia = document.getElementById('companero').value.trim();
-    const st          = document.getElementById('sheetsStatus');
+    const st          = document.getElementById('alumnoStatus');
     st.style.display = 'block';
     st.className     = 'upload-status loading';
-    st.innerHTML     = '⏳ Guardando preferencia en Google Sheets…';
+    st.innerHTML     = '⏳ Enviando preferencia…';
 
     try {
         await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencia);
         st.className = 'upload-status success';
-        st.innerHTML = '✅ Preferencia guardada. Calculando grupos…';
+        st.innerHTML = preferencia
+            ? `✅ Preferencia enviada: quieres ir con <strong>${preferencia}</strong>.`
+            : '✅ Preferencia enviada: sin preferencia.';
+    } catch (err) {
+        const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
+        st.className = 'upload-status error';
+        st.innerHTML = `❌ ${msg}`;
+    }
+}
 
+function resetearAlumno() {
+    document.getElementById('companero').value             = '';
+    document.getElementById('alumnoStatus').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PROFESOR: GENERAR GRUPOS
+// ══════════════════════════════════════════════════════════════════
+async function generarGrupos() {
+    if (!alumnos.length) { alert('Primero publica la lista de alumnos.'); return; }
+
+    const st = document.getElementById('profesorStatus');
+    st.style.display = 'block';
+    st.className     = 'upload-status loading';
+    st.innerHTML     = '⏳ Leyendo votos y generando grupos…';
+
+    try {
         const votos  = await leerVotos();
         const grupos = calcularGrupos(alumnos, votos);
-        mostrarResultado(grupos, votos);
+
+        // Guardar grupos en Config
+        await guardarConfigEnSheets(grupos);
+
+        st.className = 'upload-status success';
+        st.innerHTML = `✅ ${grupos.length} grupos generados y guardados en el Sheet.`;
+
+        mostrarResultadoProfesor(grupos, votos);
     } catch (err) {
+        const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         st.className = 'upload-status error';
-        st.innerHTML = `❌ ${err.message}`;
+        st.innerHTML = `❌ Error: ${msg}`;
     }
 }
 
@@ -483,7 +570,7 @@ function calcularGrupos(listaAlumnos, votos) {
     const asignado = new Set();
     const grupos   = [];
 
-    // Paso 1: pares mutuos → juntos garantizado
+    // Paso 1: pares mutuos
     listaAlumnos.forEach(a => {
         if (asignado.has(a)) return;
         const b = prefs[a];
@@ -493,10 +580,9 @@ function calcularGrupos(listaAlumnos, votos) {
         }
     });
 
-    // Paso 2: no coincididos + sin preferencia → pool aleatorio
+    // Paso 2: resto aleatorio
     const pool = shuffle(listaAlumnos.filter(a => !asignado.has(a)));
     let grupoAbierto = grupos.find(g => g.length < tamañoGrupo) ?? null;
-
     pool.forEach(a => {
         if (!grupoAbierto || grupoAbierto.length >= tamañoGrupo) {
             grupoAbierto = []; grupos.push(grupoAbierto);
@@ -517,42 +603,31 @@ function shuffle(arr) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MOSTRAR RESULTADO
+//  MOSTRAR GRUPOS (solo profesor)
 // ══════════════════════════════════════════════════════════════════
-function mostrarResultado(grupos, votos) {
-    const miNombre = usuarioActual?.nombre ?? '';
-    const nVotaron = Object.keys(votos).length;
+function mostrarResultadoProfesor(grupos, votos) {
+    const seccion = document.getElementById('seccionGrupos');
+    const div     = document.getElementById('resultadoProfesor');
+    seccion.style.display = '';
 
-    let html = `<div class="resultado-titulo">✓ Grupos calculados</div>
-    <div class="stats">
+    const nVotaron = Object.keys(votos).length;
+    let html = `<div class="stats" style="margin-bottom:16px">
         <div class="stat"><div class="stat-label">Grupos</div><div class="stat-value">${grupos.length}</div></div>
         <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${tamañoGrupo}</div></div>
-        <div class="stat"><div class="stat-label">Han votado</div><div class="stat-value">${nVotaron}</div></div>
-    </div><div id="grupos">`;
+        <div class="stat"><div class="stat-label">Votaron</div><div class="stat-value">${nVotaron}</div></div>
+    </div><div class="grupos-grid">`;
 
     grupos.forEach((g, i) => {
-        const esMiGrupo = g.includes(miNombre);
-        const delay     = i * 60;
-        html += `<div class="grupo-card${esMiGrupo ? ' mi-grupo' : ''}" style="animation-delay:${delay}ms">
-            <div class="grupo-titulo">Grupo ${i + 1}${esMiGrupo ? ' ⭐' : ''}</div>
+        const delay = i * 60;
+        html += `<div class="grupo-card" style="animation-delay:${delay}ms">
+            <div class="grupo-titulo">Grupo ${i + 1} <span class="grupo-count">(${g.length})</span></div>
             <div class="chips">${g.map((n, j) => {
                 const esMutuo = votos[n]?.preferencia && votos[votos[n].preferencia]?.preferencia === n;
-                return `<span class="chip${n === miNombre ? ' chip-yo' : ''}" style="animation-delay:${delay + j * 40}ms">
-                    ${n}${esMutuo ? ' 🤝' : ''}
-                </span>`;
+                return `<span class="chip" style="animation-delay:${delay + j * 30}ms">${n}${esMutuo ? ' 🤝' : ''}</span>`;
             }).join('')}</div>
         </div>`;
     });
 
     html += '</div>';
-    document.getElementById('resultado').innerHTML = html;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  RESETEAR (alumno)
-// ══════════════════════════════════════════════════════════════════
-function resetear() {
-    document.getElementById('companero').value             = '';
-    document.getElementById('resultado').innerHTML         = '';
-    document.getElementById('sheetsStatus').style.display = 'none';
+    div.innerHTML = html;
 }
