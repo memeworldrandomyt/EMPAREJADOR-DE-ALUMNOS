@@ -12,20 +12,15 @@ body {
 
 .pantalla { width: 100%; display: flex; justify-content: center; }
 
-/* ── Versión ────────────────────────────────────── */
+/* ── Versión ─────────────────────────────────────── */
 .version-badge {
-    position: fixed;
-    bottom: 10px;
-    left: 14px;
-    font-size: 11px;
-    font-weight: 700;
+    position: fixed; bottom: 10px; left: 14px;
+    font-size: 11px; font-weight: 700;
     color: rgba(255,255,255,0.45);
-    letter-spacing: 0.5px;
-    pointer-events: none;
-    user-select: none;
+    letter-spacing: 0.5px; pointer-events: none; user-select: none;
 }
 
-/* ── Login ─────────────────────────────────────── */
+/* ── Login ───────────────────────────────────────── */
 .login-box {
     background: white; border-radius: 20px; padding: 48px 40px;
     max-width: 420px; width: 100%; text-align: center;
@@ -44,22 +39,19 @@ body {
 }
 .btn-google:hover { border-color: #4285F4; box-shadow: 0 4px 16px rgba(66,133,244,0.2); transform: translateY(-1px); }
 
-.error-login {
-    color: #e74c3c; font-size: 14px; margin-top: 14px;
-    text-align: center; display: none; min-height: 20px;
-}
+.error-login { color: #e74c3c; font-size: 14px; margin-top: 14px; text-align: center; display: none; }
 
-/* ── App ───────────────────────────────────────── */
+/* ── App container ───────────────────────────────── */
 .container {
     background: white; border-radius: 15px; padding: 30px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    max-width: 640px; width: 100%;
+    max-width: 660px; width: 100%;
     display: flex; flex-direction: column; gap: 20px;
 }
 
 h1 { text-align: center; color: #333; font-size: 26px; }
 
-/* ── User header ───────────────────────────────── */
+/* ── User header ─────────────────────────────────── */
 .user-header {
     display: flex; align-items: center; justify-content: space-between;
     background: #f4f5ff; border-radius: 10px; padding: 12px 16px;
@@ -82,55 +74,20 @@ h1 { text-align: center; color: #333; font-size: 26px; }
 }
 .btn-logout:hover { background: #fee; border-color: #e57; color: #c33; }
 
-/* ── Secciones ─────────────────────────────────── */
+/* ── Secciones ───────────────────────────────────── */
+#vistaAlumno { display: flex; flex-direction: column; gap: 20px; }
 .section-card { border: 2px solid #e8e8f0; border-radius: 12px; padding: 20px; background: #fafafa; }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .section-icon   { font-size: 22px; }
 .section-header h2 { font-size: 17px; color: #444; font-weight: 700; }
 
-/* ── Upload ─────────────────────────────────────── */
-.upload-area {
-    border: 2px dashed #c0c4f0; border-radius: 10px; padding: 28px 20px;
-    text-align: center; cursor: pointer; transition: all 0.2s; background: #f4f5ff;
+.info-box {
+    background: #f0f4ff; border-left: 4px solid #667eea;
+    padding: 12px; border-radius: 8px; margin-bottom: 20px;
+    color: #555; font-size: 14px; line-height: 1.6;
 }
-.upload-area:hover, .upload-area.drag-over { border-color: #667eea; background: #eef0ff; }
-.upload-icon { font-size: 34px; margin-bottom: 10px; }
-.upload-text { font-size: 15px; color: #555; font-weight: 600; margin-bottom: 6px; }
-.upload-hint { font-size: 13px; color: #999; }
 
-/* ── Status ─────────────────────────────────────── */
-.upload-status { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 14px; }
-.upload-status.loading { background: #fff8e1; color: #7b5800; border: 1px solid #ffe082; }
-.upload-status.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
-.upload-status.error   { background: #fce4ec; color: #b71c1c; border: 1px solid #f48fb1; }
-
-/* ── Preview ────────────────────────────────────── */
-.preview-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin: 14px 0 10px; font-size: 14px; color: #555; font-weight: 600;
-}
-.btn-small {
-    background: #667eea; color: white; border: none;
-    padding: 6px 14px; border-radius: 6px; font-size: 13px;
-    cursor: pointer; font-weight: 600;
-}
-.btn-small:hover { background: #5568d4; }
-.preview-note { font-size: 12px; color: #999; margin-bottom: 8px; }
-.editar-lista {
-    width: 100%; height: 120px; padding: 10px;
-    border: 2px solid #e0e0e0; border-radius: 8px;
-    font-size: 14px; resize: vertical; font-family: inherit;
-}
-.editar-lista:focus { outline: none; border-color: #667eea; }
-
-/* ── Chips ──────────────────────────────────────── */
-.alumnos-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.chip-preview  { background: #eef0ff; color: #5060c0; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid #c8cdf5; }
-.chip-activo   { background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
-.chip-inactive { color: #aaa; font-size: 14px; font-style: italic; }
-.alumnos-chips.small .chip-activo { font-size: 12px; padding: 4px 10px; }
-
-/* ── Formulario ─────────────────────────────────── */
+/* ── Formulario alumno ───────────────────────────── */
 .form-group { margin-bottom: 20px; }
 label { display: block; margin-bottom: 8px; color: #555; font-weight: 600; }
 select {
@@ -138,12 +95,6 @@ select {
     border-radius: 8px; font-size: 16px; background: white;
 }
 select:focus { outline: none; border-color: #667eea; }
-
-.info-box {
-    background: #f0f4ff; border-left: 4px solid #667eea;
-    padding: 12px; border-radius: 8px; margin-bottom: 20px;
-    color: #555; font-size: 14px; line-height: 1.6;
-}
 
 .button-group { display: flex; gap: 10px; margin-bottom: 20px; }
 button {
@@ -157,42 +108,47 @@ button {
 .btn-reset { background: #f0f0f0; color: #333; flex: 0 0 auto; padding: 12px 20px; }
 .btn-reset:hover { background: #e0e0e0; }
 
-/* ── Resultado ──────────────────────────────────── */
-.stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 15px; margin-bottom: 24px; }
-.stat  { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid #e0e0e0; }
-.stat-label { color: #999; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px; }
-.stat-value { color: #667eea; font-size: 28px; font-weight: bold; }
+/* ── Status ──────────────────────────────────────── */
+.upload-status { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+.upload-status.loading { background: #fff8e1; color: #7b5800; border: 1px solid #ffe082; }
+.upload-status.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.upload-status.error   { background: #fce4ec; color: #b71c1c; border: 1px solid #f48fb1; }
 
-#grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 15px; }
-.grupo-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white; padding: 20px; border-radius: 12px;
-    animation: slideIn 0.5s ease-out forwards; opacity: 0;
-}
-.grupo-card.mi-grupo { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: #1a3a2a; }
-@keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-.grupo-titulo {
-    font-size: 16px; font-weight: bold; margin-bottom: 12px;
-    padding-bottom: 8px; border-bottom: 2px solid rgba(255,255,255,0.3);
-}
-.mi-grupo .grupo-titulo { border-color: rgba(0,0,0,0.15); }
-.chips { display: flex; flex-direction: column; gap: 6px; }
-.chip {
-    background: rgba(255,255,255,0.2); padding: 6px 12px;
-    border-radius: 6px; font-size: 13px;
-    animation: chipSlide 0.4s ease-out forwards; opacity: 0;
-}
-.chip.chip-yo { background: rgba(255,255,255,0.45); font-weight: 700; }
-.mi-grupo .chip { background: rgba(0,0,0,0.08); color: #1a3a2a; }
-.mi-grupo .chip.chip-yo { background: rgba(0,0,0,0.18); }
-@keyframes chipSlide { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
-.resultado-titulo {
-    font-size: 20px; font-weight: bold; color: #333;
-    margin-top: 10px; margin-bottom: 16px;
-    padding-bottom: 10px; border-bottom: 2px solid #667eea;
-}
+/* ── Chips ───────────────────────────────────────── */
+.alumnos-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.chip-preview  { background: #eef0ff; color: #5060c0; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid #c8cdf5; }
+.chip-activo   { background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.chip-inactive { color: #aaa; font-size: 14px; font-style: italic; }
+.alumnos-chips.small .chip-activo { font-size: 12px; padding: 4px 10px; }
 
-/* ══ PANEL PROFESOR ═══════════════════════════════════════════════ */
+/* ── Upload ──────────────────────────────────────── */
+.upload-area {
+    border: 2px dashed #c0c4f0; border-radius: 10px; padding: 24px 20px;
+    text-align: center; cursor: pointer; transition: all 0.2s; background: #f4f5ff;
+}
+.upload-area:hover, .upload-area.drag-over { border-color: #667eea; background: #eef0ff; }
+.upload-icon { font-size: 30px; margin-bottom: 8px; }
+.upload-text { font-size: 14px; color: #555; font-weight: 600; margin-bottom: 4px; }
+.upload-hint { font-size: 12px; color: #999; }
+
+.preview-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 14px 0 10px; font-size: 14px; color: #555; font-weight: 600;
+}
+.btn-small {
+    background: #667eea; color: white; border: none;
+    padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600;
+}
+.btn-small:hover { background: #5568d4; }
+.preview-note { font-size: 12px; color: #999; margin-bottom: 8px; }
+.editar-lista {
+    width: 100%; height: 120px; padding: 10px;
+    border: 2px solid #e0e0e0; border-radius: 8px;
+    font-size: 14px; resize: vertical; font-family: inherit;
+}
+.editar-lista:focus { outline: none; border-color: #667eea; }
+
+/* ══ PANEL PROFESOR ══════════════════════════════════════════════ */
 .panel-profesor {
     border: 2px solid #f59e0b; border-radius: 12px;
     background: #fffbeb; overflow: hidden;
@@ -214,6 +170,7 @@ button {
 .profesor-seccion:last-child { border-bottom: none; }
 .profesor-label { display: block; font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 12px; }
 
+/* Tamaño control */
 .tamaño-control { display: flex; align-items: center; gap: 16px; }
 .btn-tamaño {
     width: 40px; height: 40px; background: #f59e0b; color: white;
@@ -224,6 +181,88 @@ button {
 .btn-tamaño:hover { background: #d97706; }
 .tamaño-valor { font-size: 36px; font-weight: 900; color: #92400e; min-width: 60px; text-align: center; }
 
+/* ── Votos en tiempo real ────────────────────────── */
+.votos-live {
+    background: #fff; border: 1px solid #fde68a;
+    border-radius: 10px; padding: 16px; margin-bottom: 16px;
+}
+.votos-contador {
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
+}
+.votos-num {
+    font-size: 42px; font-weight: 900; color: #d97706; line-height: 1;
+}
+.votos-de { font-size: 15px; color: #92400e; font-weight: 600; }
+
+.votos-barra-wrap {
+    background: #fde68a; border-radius: 20px; height: 8px; margin-bottom: 12px; overflow: hidden;
+}
+.votos-barra {
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+    height: 100%; border-radius: 20px;
+    transition: width 0.5s ease;
+}
+
+.votos-lista {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px;
+}
+.voto-chip {
+    background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+    padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+}
+
+.votos-refresh {
+    font-size: 12px; color: #b45309; display: flex; align-items: center; gap: 8px;
+}
+.btn-refresh {
+    background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+    padding: 3px 10px; border-radius: 6px; font-size: 12px;
+    cursor: pointer; font-weight: 600; flex: 0; transition: background 0.2s;
+}
+.btn-refresh:hover { background: #fde68a; }
+
+/* ── Botón generar grupos ────────────────────────── */
+.btn-generar {
+    width: 100%; padding: 14px; margin-top: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white; border: none; border-radius: 10px;
+    font-size: 17px; font-weight: 700; cursor: pointer;
+    transition: all 0.3s; flex: none;
+}
+.btn-generar:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
+
+/* ── Grupos generados (profesor) ─────────────────── */
+.grupos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+.stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.stat  { background: #fff; border: 2px solid #fde68a; padding: 12px; border-radius: 8px; text-align: center; }
+.stat-label { color: #b45309; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+.stat-value { color: #d97706; font-size: 26px; font-weight: 900; }
+
+.grupo-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white; padding: 16px; border-radius: 10px;
+    animation: slideIn 0.4s ease-out forwards; opacity: 0;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+.grupo-titulo {
+    font-size: 15px; font-weight: 700; margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 2px solid rgba(255,255,255,0.25);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.grupo-count { font-size: 12px; opacity: 0.7; font-weight: 400; }
+.chips { display: flex; flex-direction: column; gap: 5px; }
+.chip {
+    background: rgba(255,255,255,0.2); padding: 5px 10px;
+    border-radius: 5px; font-size: 13px;
+    animation: chipSlide 0.3s ease-out forwards; opacity: 0;
+}
+@keyframes chipSlide { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+
+/* ── Botón peligroso ─────────────────────────────── */
 .btn-danger {
     background: #fee2e2; color: #b91c1c; border: 2px solid #fca5a5;
     padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
@@ -232,18 +271,14 @@ button {
 .btn-danger:hover { background: #fca5a5; border-color: #ef4444; }
 
 /* ══ ZONA ACCESO PROFESOR ════════════════════════════════════════ */
-.zona-profesor {
-    border-top: 1px dashed #e0e0e0;
-    padding-top: 16px;
-}
+.zona-profesor { border-top: 1px dashed #e0e0e0; padding-top: 16px; }
 .acceso-profesor {
     display: flex; align-items: center; gap: 10px;
     justify-content: center; flex-wrap: wrap;
 }
 .input-codigo {
     padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px;
-    font-size: 14px; color: #666; width: 200px; background: #fafafa;
-    letter-spacing: 2px;
+    font-size: 14px; color: #666; width: 200px; background: #fafafa; letter-spacing: 2px;
 }
 .input-codigo:focus { outline: none; border-color: #f59e0b; }
 .input-codigo::placeholder { letter-spacing: normal; }
