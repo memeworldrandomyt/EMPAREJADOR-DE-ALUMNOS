@@ -27,10 +27,10 @@
             </button>
             <div id="loginError" class="error-login"></div>
         </div>
-        <div class="version-badge">v1.4.2</div>
+        <div class="version-badge">v1.5</div>
     </div>
 
-    <!-- ── PANTALLA: App principal ────────────────────────── -->
+    <!-- ── PANTALLA: App ───────────────────────────────────── -->
     <div id="pantallaApp" class="pantalla" style="display:none">
         <div class="container">
 
@@ -49,42 +49,46 @@
 
             <h1>📚 Emparejar Alumnos</h1>
 
-            <!-- SECCIÓN: Lista activa (solo lectura para alumnos) -->
-            <div class="section-card">
-                <div class="section-header">
-                    <span class="section-icon">👥</span>
-                    <h2>Lista activa</h2>
-                </div>
-                <div id="listaActiva" class="alumnos-chips small">
-                    <span class="chip-inactive">El profesor aún no ha cargado la lista</span>
-                </div>
-                <div class="info-box" style="margin-top:12px;margin-bottom:0">
-                    Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas.
-                    Las preferencias <strong>mutuas</strong> se emparejan primero.
-                </div>
-            </div>
+            <!-- ══ VISTA ALUMNO ══════════════════════════════════ -->
+            <div id="vistaAlumno">
 
-            <!-- SECCIÓN: Mi preferencia -->
-            <div class="section-card">
-                <div class="section-header">
-                    <span class="section-icon">🎯</span>
-                    <h2>Mi preferencia de grupo</h2>
+                <!-- Lista activa (solo lectura) -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <span class="section-icon">👥</span>
+                        <h2>Lista activa</h2>
+                    </div>
+                    <div id="listaActiva" class="alumnos-chips small">
+                        <span class="chip-inactive">El profesor aún no ha cargado la lista</span>
+                    </div>
+                    <div class="info-box" style="margin-top:12px;margin-bottom:0">
+                        Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas.
+                        Las preferencias <strong>mutuas</strong> se emparejan primero.
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="companero">¿Con quién quieres ir? (opcional)</label>
-                    <select id="companero">
-                        <option value="">-- Sin preferencia --</option>
-                    </select>
-                </div>
-                <div class="button-group">
-                    <button class="btn-emparejar" onclick="guardarYEmparejar()">Guardar y emparejar</button>
-                    <button class="btn-reset" onclick="resetear()">Limpiar</button>
-                </div>
-                <div id="sheetsStatus" class="upload-status" style="display:none"></div>
-                <div id="resultado"></div>
-            </div>
 
-            <!-- ══ PANEL PROFESOR (oculto por defecto) ══ -->
+                <!-- Enviar preferencia -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <span class="section-icon">🎯</span>
+                        <h2>Mi preferencia de grupo</h2>
+                    </div>
+                    <div class="form-group">
+                        <label for="companero">¿Con quién quieres ir? (opcional)</label>
+                        <select id="companero">
+                            <option value="">-- Sin preferencia --</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn-emparejar" onclick="enviarPreferencia()">Enviar preferencia</button>
+                        <button class="btn-reset" onclick="resetearAlumno()">Limpiar</button>
+                    </div>
+                    <div id="alumnoStatus" class="upload-status" style="display:none"></div>
+                </div>
+
+            </div><!-- /vistaAlumno -->
+
+            <!-- ══ PANEL PROFESOR ════════════════════════════════ -->
             <div id="panelProfesor" class="panel-profesor" style="display:none">
                 <div class="profesor-header">
                     <span>🎓 Panel del Profesor</span>
@@ -101,7 +105,7 @@
                     </div>
                 </div>
 
-                <!-- Cargar lista -->
+                <!-- Lista de alumnos -->
                 <div class="profesor-seccion">
                     <label class="profesor-label">Lista de alumnos</label>
                     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
@@ -122,6 +126,32 @@
                     </div>
                 </div>
 
+                <!-- Votos en tiempo real + generar grupos -->
+                <div class="profesor-seccion">
+                    <label class="profesor-label">Votos recibidos</label>
+                    <div class="votos-live">
+                        <div class="votos-contador">
+                            <span class="votos-num" id="votosNum">0</span>
+                            <span class="votos-de" id="votosDe">/ — alumnos</span>
+                        </div>
+                        <div class="votos-barra-wrap">
+                            <div class="votos-barra" id="votosBarra" style="width:0%"></div>
+                        </div>
+                        <div class="votos-lista" id="votosLista"></div>
+                        <div class="votos-refresh">Actualización automática cada 10 s
+                            <button class="btn-refresh" onclick="actualizarVotosProfesor()">↻ Ahora</button>
+                        </div>
+                    </div>
+                    <button class="btn-generar" onclick="generarGrupos()">🔀 Generar grupos</button>
+                    <div id="profesorStatus" class="upload-status" style="display:none"></div>
+                </div>
+
+                <!-- Resultado grupos (solo profesor) -->
+                <div class="profesor-seccion" id="seccionGrupos" style="display:none">
+                    <label class="profesor-label">Grupos generados</label>
+                    <div id="resultadoProfesor"></div>
+                </div>
+
                 <!-- Acciones -->
                 <div class="profesor-seccion">
                     <label class="profesor-label">Acciones</label>
@@ -129,7 +159,7 @@
                 </div>
             </div>
 
-            <!-- ══ ZONA ACCESO PROFESOR (siempre visible abajo) ══ -->
+            <!-- ══ ZONA ACCESO PROFESOR ══════════════════════════ -->
             <div class="zona-profesor">
                 <div id="accesoProfesor" class="acceso-profesor">
                     <input type="password" id="codigoProfesor" placeholder="Código de acceso profesor"
@@ -140,9 +170,7 @@
             </div>
 
         </div>
-
-        <!-- Versión -->
-        <div class="version-badge">v1.4.2</div>
+        <div class="version-badge">v1.5</div>
     </div>
 
     <script src="main.js"></script>
