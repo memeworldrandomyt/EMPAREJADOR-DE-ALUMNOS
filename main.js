@@ -9,7 +9,7 @@ const CONFIG = {
     sheetConfig:   'Config',   // hoja para guardar lista y tamaño de grupo
 };
 
-const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
+const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets.currentonly https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const CODIGO_PROF   = 'PR0F3SOR';
 
