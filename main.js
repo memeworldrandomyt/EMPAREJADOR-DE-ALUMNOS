@@ -6,7 +6,7 @@ const CONFIG = {
     apiKey:        'AIzaSyDDg3DGAtuEqaDusmJxlmjmLfy40og0ccQ',
     spreadsheetId: '1JAFWVUenNEDssEPo9mb4Ni4YzKcZlAAf4dxEDDNSnA8',
     sheetVotos:    'Votos',
-    sheetConfig:   'Config',   // hoja para guardar lista y tamaño de grupo
+    sheetConfig:   'Config',
 };
 
 const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets.currentonly https://www.googleapis.com/auth/userinfo.profile';
@@ -65,7 +65,11 @@ async function cargarPerfilUsuario() {
             headers: { Authorization: 'Bearer ' + accessToken }
         });
         const perfil = await res.json();
-        usuarioActual = { nombre: perfil.name || perfil.email, email: perfil.email, foto: perfil.picture || '' };
+        usuarioActual = {
+            nombre: perfil.name || perfil.email,
+            email:  perfil.email,
+            foto:   perfil.picture || '',
+        };
 
         document.getElementById('userName').textContent  = usuarioActual.nombre;
         document.getElementById('userEmail').textContent = usuarioActual.email;
@@ -73,24 +77,29 @@ async function cargarPerfilUsuario() {
         const avatarImg      = document.getElementById('userAvatar');
         const avatarFallback = document.getElementById('userAvatarFallback');
         if (usuarioActual.foto) {
-            avatarImg.src = usuarioActual.foto; avatarImg.style.display = ''; avatarFallback.style.display = 'none';
+            avatarImg.src = usuarioActual.foto;
+            avatarImg.style.display      = '';
+            avatarFallback.style.display = 'none';
         } else {
-            avatarImg.style.display = 'none'; avatarFallback.style.display = '';
-            avatarFallback.textContent = usuarioActual.nombre[0].toUpperCase();
+            avatarImg.style.display      = 'none';
+            avatarFallback.style.display = '';
+            avatarFallback.textContent   = usuarioActual.nombre[0].toUpperCase();
         }
 
         document.getElementById('pantallaLogin').style.display = 'none';
         document.getElementById('pantallaApp').style.display   = '';
 
-        // Cargar configuración guardada (lista + tamaño) desde Sheets
         await cargarConfigDesdeSheets();
 
-    } catch (err) { mostrarLoginError('No se pudo obtener el perfil: ' + err.message); }
+    } catch (err) {
+        mostrarLoginError('No se pudo obtener el perfil: ' + err.message);
+    }
 }
 
 function mostrarLoginError(msg) {
     const el = document.getElementById('loginError');
-    el.textContent = msg; el.style.display = msg ? 'block' : 'none';
+    el.textContent   = msg;
+    el.style.display = msg ? 'block' : 'none';
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -104,10 +113,9 @@ function validarProfesor() {
         modoProfesor = true;
         input.value  = '';
         error.style.display = 'none';
-        document.getElementById('panelProfesor').style.display = '';
+        document.getElementById('panelProfesor').style.display  = '';
         document.getElementById('accesoProfesor').style.display = 'none';
-        // Actualizar el control de tamaño con el valor actual
-        document.getElementById('tamañoValor').textContent = tamañoGrupo;
+        document.getElementById('tamañoValor').textContent      = tamañoGrupo;
     } else {
         error.style.display = 'block';
         input.value = '';
@@ -118,30 +126,30 @@ function validarProfesor() {
 
 function cerrarModoProfesor() {
     modoProfesor = false;
-    document.getElementById('panelProfesor').style.display   = 'none';
-    document.getElementById('accesoProfesor').style.display  = '';
-    document.getElementById('codigoProfesor').value          = '';
+    document.getElementById('panelProfesor').style.display  = 'none';
+    document.getElementById('accesoProfesor').style.display = '';
+    document.getElementById('codigoProfesor').value         = '';
 }
 
 function cambiarTamaño(delta) {
     tamañoGrupo = Math.max(2, Math.min(100, tamañoGrupo + delta));
-    document.getElementById('tamañoValor').textContent    = tamañoGrupo;
+    document.getElementById('tamañoValor').textContent     = tamañoGrupo;
     document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  GOOGLE SHEETS — Config (lista + tamaño de grupo)
+//  ⚠️ Las hojas "Votos" y "Config" deben existir ya en el Sheet
 // ══════════════════════════════════════════════════════════════════
-
 async function cargarConfigDesdeSheets() {
     try {
-        const res  = await gapi.client.sheets.spreadsheets.values.get({
+        const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
             range:         `${CONFIG.sheetConfig}!A1:B`,
         });
         const filas = res.result.values || [];
 
-        let nuevoTamaño  = 30;
+        let nuevoTamaño   = 30;
         let nuevosAlumnos = [];
 
         filas.forEach(fila => {
@@ -162,20 +170,17 @@ async function cargarConfigDesdeSheets() {
         inicializarSelect();
 
     } catch (err) {
-        // La hoja Config aún no existe → valores por defecto
-        console.log('Config no encontrada, usando valores por defecto:', err.message);
+        console.warn('Config no encontrada, usando valores por defecto:', err.message);
     }
 }
 
 async function guardarConfigEnSheets() {
-    // Fila 1: __TAMAÑO__ | valor
-    // Filas 2+: nombre alumno
     const valores = [
         ['__TAMAÑO__', tamañoGrupo],
         ...alumnos.map(n => [n])
     ];
 
-    // Limpiar hoja y reescribir
+    // Limpiar y reescribir la hoja Config
     await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
         range:         `${CONFIG.sheetConfig}!A:B`,
@@ -212,6 +217,7 @@ async function leerVotos() {
 }
 
 async function escribirVoto(nombre, email, preferencia) {
+    // Buscar fila existente
     let filaExistente = null;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
@@ -234,6 +240,7 @@ async function escribirVoto(nombre, email, preferencia) {
             resource:         { values: valores },
         });
     } else {
+        // Asegurar cabecera en fila 1
         await asegurarCabeceraVotos();
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId:    CONFIG.spreadsheetId,
@@ -261,8 +268,6 @@ async function asegurarCabeceraVotos() {
         }
     } catch { /* ignorar */ }
 }
-
-
 
 async function resetearVotos() {
     if (!confirm('¿Seguro que quieres borrar todos los votos? Esta acción no se puede deshacer.')) return;
@@ -303,8 +308,9 @@ async function procesarArchivo(file) {
     status.innerHTML      = '⏳ Analizando documento con IA…';
 
     try {
-        const ext    = file.name.split('.').pop().toLowerCase();
-        let nombres  = [];
+        const ext   = file.name.split('.').pop().toLowerCase();
+        let nombres = [];
+
         if (ext === 'txt') {
             nombres = await extraerDesdeTxt(file);
         } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
@@ -312,6 +318,7 @@ async function procesarArchivo(file) {
         } else {
             throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
         }
+
         if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
@@ -347,7 +354,8 @@ async function extraerConClaude(file, ext) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+            model:      'claude-sonnet-4-20250514',
+            max_tokens: 1000,
             system: `Eres un extractor de nombres de personas.
 Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks.
 Ejemplo: ["Ana García","Pedro López"]
@@ -393,7 +401,7 @@ async function usarAlumnos() {
 
     const status = document.getElementById('uploadStatus');
     status.className = 'upload-status loading';
-    status.innerHTML = '⏳ Guardando lista y configuración en Google Sheets…';
+    status.innerHTML = '⏳ Guardando en Google Sheets…';
 
     try {
         await guardarConfigEnSheets();
@@ -401,7 +409,7 @@ async function usarAlumnos() {
         inicializarSelect();
         document.getElementById('listaPreview').style.display = 'none';
         status.className = 'upload-status success';
-        status.innerHTML = `✅ Lista publicada con <strong>${alumnos.length}</strong> alumnos. Tamaño de grupo: <strong>${tamañoGrupo}</strong>.`;
+        status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong>.`;
     } catch (err) {
         status.className = 'upload-status error';
         status.innerHTML = `❌ Error guardando: ${err.message}`;
@@ -465,7 +473,7 @@ function calcularGrupos(listaAlumnos, votos) {
     const asignado = new Set();
     const grupos   = [];
 
-    // Paso 1: pares mutuos
+    // Paso 1: pares mutuos → juntos garantizado
     listaAlumnos.forEach(a => {
         if (asignado.has(a)) return;
         const b = prefs[a];
@@ -475,7 +483,7 @@ function calcularGrupos(listaAlumnos, votos) {
         }
     });
 
-    // Paso 2: resto en pool aleatorio
+    // Paso 2: no coincididos + sin preferencia → pool aleatorio
     const pool = shuffle(listaAlumnos.filter(a => !asignado.has(a)));
     let grupoAbierto = grupos.find(g => g.length < tamañoGrupo) ?? null;
 
