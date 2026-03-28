@@ -25,8 +25,9 @@
                 </svg>
                 Iniciar sesión con Google
             </button>
-            <div id="loginError" class="error" style="margin-top:14px;text-align:center;display:block"></div>
+            <div id="loginError" class="error-login"></div>
         </div>
+        <div class="version-badge">v1.3</div>
     </div>
 
     <!-- ── PANTALLA: App principal ────────────────────────── -->
@@ -48,8 +49,8 @@
 
             <h1>📚 Emparejar Alumnos</h1>
 
-            <!-- ══ SECCIÓN ALUMNO: Lista activa (solo lectura) ══ -->
-            <div class="section-card" id="seccionListaActiva">
+            <!-- SECCIÓN: Lista activa (solo lectura para alumnos) -->
+            <div class="section-card">
                 <div class="section-header">
                     <span class="section-icon">👥</span>
                     <h2>Lista activa</h2>
@@ -63,7 +64,7 @@
                 </div>
             </div>
 
-            <!-- ══ SECCIÓN: Mi preferencia ══ -->
+            <!-- SECCIÓN: Mi preferencia -->
             <div class="section-card">
                 <div class="section-header">
                     <span class="section-icon">🎯</span>
@@ -87,7 +88,7 @@
             <div id="panelProfesor" class="panel-profesor" style="display:none">
                 <div class="profesor-header">
                     <span>🎓 Panel del Profesor</span>
-                    <button class="btn-cerrar-profesor" onclick="cerrarModoProfesor()">✕ Salir del modo profesor</button>
+                    <button class="btn-cerrar-profesor" onclick="cerrarModoProfesor()">✕ Salir</button>
                 </div>
 
                 <!-- Tamaño de grupo -->
@@ -121,7 +122,7 @@
                     </div>
                 </div>
 
-                <!-- Resetear votos -->
+                <!-- Acciones -->
                 <div class="profesor-seccion">
                     <label class="profesor-label">Acciones</label>
                     <button class="btn-danger" onclick="resetearVotos()">🗑️ Borrar todos los votos</button>
@@ -131,14 +132,17 @@
             <!-- ══ ZONA ACCESO PROFESOR (siempre visible abajo) ══ -->
             <div class="zona-profesor">
                 <div id="accesoProfesor" class="acceso-profesor">
-                    <input type="password" id="codigoProfesor" placeholder="Código de acceso" class="input-codigo"
-                           onkeydown="if(event.key==='Enter') validarProfesor()">
+                    <input type="password" id="codigoProfesor" placeholder="Código de acceso profesor"
+                           class="input-codigo" onkeydown="if(event.key==='Enter') validarProfesor()">
                     <button class="btn-validar" onclick="validarProfesor()">Acceder</button>
                     <div id="errorCodigo" class="error-codigo" style="display:none">Código incorrecto</div>
                 </div>
             </div>
 
         </div>
+
+        <!-- Versión -->
+        <div class="version-badge">v1.3</div>
     </div>
 
     <script src="main.js"></script>
