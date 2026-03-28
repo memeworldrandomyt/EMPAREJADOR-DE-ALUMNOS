@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emparejar Alumnos</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- Google API client -->
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
@@ -50,51 +48,26 @@
 
             <h1>📚 Emparejar Alumnos</h1>
 
-            <!-- SECCIÓN: Cargar documento -->
-            <div class="section-card">
-                <div class="section-header">
-                    <span class="section-icon">📄</span>
-                    <h2>Cargar lista de alumnos</h2>
-                </div>
-                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                    <div class="upload-icon">⬆️</div>
-                    <div class="upload-text">Arrastra un archivo aquí o haz clic para seleccionar</div>
-                    <div class="upload-hint">PDF, imagen (JPG/PNG), texto (.txt) o Word (.docx)</div>
-                    <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="cargarArchivo(event)">
-                </div>
-                <div id="uploadStatus" class="upload-status" style="display:none"></div>
-                <div id="listaPreview" style="display:none">
-                    <div class="preview-header">
-                        <span>Alumnos encontrados (<span id="countAlumnos">0</span>)</span>
-                        <button class="btn-small" onclick="usarAlumnos()">✓ Usar esta lista</button>
-                    </div>
-                    <div id="alumnosDetectados" class="alumnos-chips"></div>
-                    <div class="preview-note">Ordenados alfabéticamente. Puedes editar antes de confirmar.</div>
-                    <textarea id="editarAlumnos" class="editar-lista" placeholder="Un nombre por línea..."></textarea>
-                </div>
-            </div>
-
-            <!-- SECCIÓN: Lista activa -->
-            <div class="section-card">
+            <!-- ══ SECCIÓN ALUMNO: Lista activa (solo lectura) ══ -->
+            <div class="section-card" id="seccionListaActiva">
                 <div class="section-header">
                     <span class="section-icon">👥</span>
                     <h2>Lista activa</h2>
                 </div>
                 <div id="listaActiva" class="alumnos-chips small">
-                    <span class="chip-inactive">Sin alumnos cargados</span>
+                    <span class="chip-inactive">El profesor aún no ha cargado la lista</span>
+                </div>
+                <div class="info-box" style="margin-top:12px;margin-bottom:0">
+                    Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas.
+                    Las preferencias <strong>mutuas</strong> se emparejan primero.
                 </div>
             </div>
 
-            <!-- SECCIÓN: Mi preferencia -->
+            <!-- ══ SECCIÓN: Mi preferencia ══ -->
             <div class="section-card">
                 <div class="section-header">
                     <span class="section-icon">🎯</span>
                     <h2>Mi preferencia de grupo</h2>
-                </div>
-                <div class="info-box">
-                    Grupos de hasta <strong>30</strong> personas.
-                    Las preferencias <strong>mutuas</strong> se emparejan primero.
-                    El resto se asigna aleatoriamente.
                 </div>
                 <div class="form-group">
                     <label for="companero">¿Con quién quieres ir? (opcional)</label>
@@ -108,6 +81,61 @@
                 </div>
                 <div id="sheetsStatus" class="upload-status" style="display:none"></div>
                 <div id="resultado"></div>
+            </div>
+
+            <!-- ══ PANEL PROFESOR (oculto por defecto) ══ -->
+            <div id="panelProfesor" class="panel-profesor" style="display:none">
+                <div class="profesor-header">
+                    <span>🎓 Panel del Profesor</span>
+                    <button class="btn-cerrar-profesor" onclick="cerrarModoProfesor()">✕ Salir del modo profesor</button>
+                </div>
+
+                <!-- Tamaño de grupo -->
+                <div class="profesor-seccion">
+                    <label class="profesor-label">Tamaño máximo de grupo</label>
+                    <div class="tamaño-control">
+                        <button class="btn-tamaño" onclick="cambiarTamaño(-1)">−</button>
+                        <span id="tamañoValor" class="tamaño-valor">30</span>
+                        <button class="btn-tamaño" onclick="cambiarTamaño(1)">+</button>
+                    </div>
+                </div>
+
+                <!-- Cargar lista -->
+                <div class="profesor-seccion">
+                    <label class="profesor-label">Lista de alumnos</label>
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                        <div class="upload-icon">⬆️</div>
+                        <div class="upload-text">Arrastra un archivo o haz clic para seleccionar</div>
+                        <div class="upload-hint">PDF, imagen (JPG/PNG), texto (.txt) o Word (.docx)</div>
+                        <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="cargarArchivo(event)">
+                    </div>
+                    <div id="uploadStatus" class="upload-status" style="display:none"></div>
+                    <div id="listaPreview" style="display:none">
+                        <div class="preview-header">
+                            <span>Alumnos encontrados (<span id="countAlumnos">0</span>)</span>
+                            <button class="btn-small" onclick="usarAlumnos()">✓ Publicar lista</button>
+                        </div>
+                        <div id="alumnosDetectados" class="alumnos-chips"></div>
+                        <div class="preview-note">Ordenados alfabéticamente. Puedes editar antes de publicar.</div>
+                        <textarea id="editarAlumnos" class="editar-lista" placeholder="Un nombre por línea..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Resetear votos -->
+                <div class="profesor-seccion">
+                    <label class="profesor-label">Acciones</label>
+                    <button class="btn-danger" onclick="resetearVotos()">🗑️ Borrar todos los votos</button>
+                </div>
+            </div>
+
+            <!-- ══ ZONA ACCESO PROFESOR (siempre visible abajo) ══ -->
+            <div class="zona-profesor">
+                <div id="accesoProfesor" class="acceso-profesor">
+                    <input type="password" id="codigoProfesor" placeholder="Código de acceso" class="input-codigo"
+                           onkeydown="if(event.key==='Enter') validarProfesor()">
+                    <button class="btn-validar" onclick="validarProfesor()">Acceder</button>
+                    <div id="errorCodigo" class="error-codigo" style="display:none">Código incorrecto</div>
+                </div>
             </div>
 
         </div>
