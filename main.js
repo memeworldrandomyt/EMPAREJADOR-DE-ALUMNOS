@@ -175,8 +175,6 @@ async function guardarConfigEnSheets() {
         ...alumnos.map(n => [n])
     ];
 
-    await asegurarHoja(CONFIG.sheetConfig);
-
     // Limpiar hoja y reescribir
     await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
@@ -264,21 +262,7 @@ async function asegurarCabeceraVotos() {
     } catch { /* ignorar */ }
 }
 
-async function asegurarHoja(nombre) {
-    try {
-        // Intentar leer — si no existe lanzará error
-        await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${nombre}!A1`,
-        });
-    } catch {
-        // Crear la hoja
-        await gapi.client.sheets.spreadsheets.batchUpdate({
-            spreadsheetId: CONFIG.spreadsheetId,
-            resource: { requests: [{ addSheet: { properties: { title: nombre } } }] },
-        });
-    }
-}
+
 
 async function resetearVotos() {
     if (!confirm('¿Seguro que quieres borrar todos los votos? Esta acción no se puede deshacer.')) return;
