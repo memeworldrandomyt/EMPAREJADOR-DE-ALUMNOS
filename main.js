@@ -180,18 +180,25 @@ async function guardarConfigEnSheets() {
         ...alumnos.map(n => [n])
     ];
 
-    // Limpiar y reescribir la hoja Config
-    await gapi.client.sheets.spreadsheets.values.clear({
+    // 1. Limpiar hoja Config
+    const resClear = await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
         range:         `${CONFIG.sheetConfig}!A:B`,
     });
+    if (resClear.status !== 200) {
+        throw new Error(`No se pudo limpiar la hoja Config (${resClear.status}). ¿Existe la pestaña "Config" en el Sheet?`);
+    }
 
-    await gapi.client.sheets.spreadsheets.values.update({
+    // 2. Escribir datos nuevos
+    const resUpdate = await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:    CONFIG.spreadsheetId,
         range:            `${CONFIG.sheetConfig}!A1`,
         valueInputOption: 'RAW',
         resource:         { values: valores },
     });
+    if (resUpdate.status !== 200) {
+        throw new Error(`No se pudo escribir en la hoja Config (${resUpdate.status}).`);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -400,8 +407,9 @@ async function usarAlumnos() {
     alumnos = nuevos;
 
     const status = document.getElementById('uploadStatus');
-    status.className = 'upload-status loading';
-    status.innerHTML = '⏳ Guardando en Google Sheets…';
+    status.style.display = 'block';
+    status.className     = 'upload-status loading';
+    status.innerHTML     = '⏳ Guardando en Google Sheets…';
 
     try {
         await guardarConfigEnSheets();
@@ -411,8 +419,10 @@ async function usarAlumnos() {
         status.className = 'upload-status success';
         status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong>.`;
     } catch (err) {
+        // Los errores de gapi tienen la estructura err.result.error.message
+        const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         status.className = 'upload-status error';
-        status.innerHTML = `❌ Error guardando: ${err.message}`;
+        status.innerHTML = `❌ Error guardando: ${msg}`;
     }
 }
 
