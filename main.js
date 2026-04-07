@@ -366,19 +366,14 @@ async function procesarArchivo(file) {
     preview.style.display = 'none';
     status.style.display  = 'block';
     status.className      = 'upload-status loading';
-    status.innerHTML      = '⏳ Analizando documento con IA…';
+    status.innerHTML      = '⏳ Leyendo archivo…';
 
     try {
-        const ext   = file.name.split('.').pop().toLowerCase();
-        let nombres = [];
-        if (ext === 'txt') {
-            nombres = await extraerDesdeTxt(file);
-        } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
-            nombres = await extraerConClaude(file, ext);
-        } else {
-            throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
-        }
-        if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext !== 'txt') throw new Error('Solo se admiten archivos .txt — un nombre por línea.');
+
+        const nombres = await extraerDesdeTxt(file);
+        if (!nombres.length) throw new Error('No se encontraron nombres en el archivo.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
         status.className = 'upload-status success';
@@ -396,52 +391,6 @@ function extraerDesdeTxt(file) {
         r.onload  = e => resolve(e.target.result.split('\n').map(l => l.trim()).filter(l => l.length > 1));
         r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
         r.readAsText(file);
-    });
-}
-
-async function extraerConClaude(file, ext) {
-    const base64 = await fileToBase64(file);
-    const isImg  = ['jpg','jpeg','png','webp'].includes(ext);
-    const mime   = isImg
-        ? (ext === 'jpg' ? 'image/jpeg' : `image/${ext}`)
-        : (ext === 'pdf' ? 'application/pdf'
-            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    const contentBlock = isImg
-        ? { type: 'image',    source: { type: 'base64', media_type: mime, data: base64 } }
-        : { type: 'document', source: { type: 'base64', media_type: mime, data: base64 } };
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model:      'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-            system: `Eres un extractor de nombres de personas.
-Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks.
-Ejemplo: ["Ana García","Pedro López"]
-Si no hay nombres: []`,
-            messages: [{ role: 'user', content: [
-                contentBlock,
-                { type: 'text', text: 'Extrae todos los nombres de personas de este documento.' }
-            ]}],
-        })
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Error con la IA.'); }
-    const data  = await res.json();
-    const texto = data.content.map(b => b.text || '').join('').trim();
-    try {
-        const parsed = JSON.parse(texto);
-        if (!Array.isArray(parsed)) throw 0;
-        return parsed.filter(n => typeof n === 'string' && n.trim());
-    } catch { throw new Error('La IA no devolvió una lista válida.'); }
-}
-
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload  = e => resolve(e.target.result.split(',')[1]);
-        r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
-        r.readAsDataURL(file);
     });
 }
 
