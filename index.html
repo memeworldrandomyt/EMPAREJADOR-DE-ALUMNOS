@@ -109,10 +109,10 @@
                 <div class="profesor-seccion">
                     <label class="profesor-label">Lista de alumnos</label>
                     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                        <div class="upload-icon">⬆️</div>
-                        <div class="upload-text">Arrastra un archivo o haz clic para seleccionar</div>
-                        <div class="upload-hint">PDF, imagen (JPG/PNG), texto (.txt) o Word (.docx)</div>
-                        <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="cargarArchivo(event)">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Haz clic para seleccionar un archivo</div>
+                        <div class="upload-hint">Solo archivos de texto (.txt) — un nombre por línea</div>
+                        <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="cargarArchivo(event)">
                     </div>
                     <div id="uploadStatus" class="upload-status" style="display:none"></div>
                     <div id="listaPreview" style="display:none">
