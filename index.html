@@ -13,9 +13,9 @@
     <!-- ── PANTALLA: Login ─────────────────────────────────── -->
     <div id="pantallaLogin" class="pantalla">
         <div class="login-box">
-            <div class="login-logo">📚</div>
+            <div class="login-logo">🎓</div>
             <h1>Agrupador de Alumnos</h1>
-            <p class="login-desc">Inicia sesión con tu cuenta de Google para registrar tu preferencia de grupo.</p>
+            <p class="login-desc">Inicia sesión con tu cuenta de Google para registrar tus preferencias de grupo.</p>
             <button class="btn-google" onclick="iniciarSesion()">
                 <svg width="20" height="20" viewBox="0 0 48 48">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -47,12 +47,12 @@
                 <button class="btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
             </div>
 
-            <h1>📚 Agrupador de Alumnos</h1>
+            <h1>🎓 Agrupador de Alumnos</h1>
 
             <!-- ══ VISTA ALUMNO ══════════════════════════════════ -->
             <div id="vistaAlumno">
 
-                <!-- Lista activa (solo lectura) -->
+                <!-- Lista activa -->
                 <div class="section-card">
                     <div class="section-header">
                         <span class="section-icon">👥</span>
@@ -62,25 +62,22 @@
                         <span class="chip-inactive">El profesor aún no ha cargado la lista</span>
                     </div>
                     <div class="info-box" style="margin-top:12px;margin-bottom:0">
-                        Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas.
+                        Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas ·
+                        Puedes indicar hasta <strong id="maxVotosInfo">—</strong> preferencia(s).
                         Las preferencias <strong>mutuas</strong> se emparejan primero.
                     </div>
                 </div>
 
-                <!-- Enviar preferencia -->
+                <!-- Enviar preferencias -->
                 <div class="section-card">
                     <div class="section-header">
                         <span class="section-icon">🎯</span>
-                        <h2>Mi preferencia de grupo</h2>
+                        <h2>Mis preferencias de grupo</h2>
                     </div>
-                    <div class="form-group">
-                        <label for="companero">¿Con quién quieres ir? (opcional)</label>
-                        <select id="companero">
-                            <option value="">-- Sin preferencia --</option>
-                        </select>
-                    </div>
+                    <!-- Los selects se generan dinámicamente según maxVotos -->
+                    <div id="selectsPreferencias"></div>
                     <div class="button-group">
-                        <button class="btn-emparejar" onclick="enviarPreferencia()">Enviar preferencia</button>
+                        <button class="btn-emparejar" onclick="enviarPreferencia()">Enviar preferencias</button>
                         <button class="btn-reset" onclick="resetearAlumno()">Limpiar</button>
                     </div>
                     <div id="alumnoStatus" class="upload-status" style="display:none"></div>
@@ -105,6 +102,17 @@
                     </div>
                 </div>
 
+                <!-- Máx. votos por alumno -->
+                <div class="profesor-seccion">
+                    <label class="profesor-label">Preferencias por alumno (votos)</label>
+                    <div class="tamaño-control">
+                        <button class="btn-tamaño" onclick="cambiarMaxVotos(-1)">−</button>
+                        <span id="maxVotosValor" class="tamaño-valor">1</span>
+                        <button class="btn-tamaño" onclick="cambiarMaxVotos(1)">+</button>
+                    </div>
+                    <div class="tamaño-nota">Número de compañeros que cada alumno puede indicar</div>
+                </div>
+
                 <!-- Lista de alumnos -->
                 <div class="profesor-seccion">
                     <label class="profesor-label">Lista de alumnos</label>
@@ -126,7 +134,7 @@
                     </div>
                 </div>
 
-                <!-- Votos en tiempo real + generar grupos -->
+                <!-- Votos en tiempo real -->
                 <div class="profesor-seccion">
                     <label class="profesor-label">Votos recibidos</label>
                     <div class="votos-live">
@@ -146,7 +154,7 @@
                     <div id="profesorStatus" class="upload-status" style="display:none"></div>
                 </div>
 
-                <!-- Resultado grupos (solo profesor) -->
+                <!-- Grupos generados -->
                 <div class="profesor-seccion" id="seccionGrupos" style="display:none">
                     <label class="profesor-label">Grupos generados</label>
                     <div id="resultadoProfesor"></div>
@@ -170,7 +178,7 @@
             </div>
 
         </div>
-        <div class="version-badge">v1.6/div>
+        <div class="version-badge">v1.6</div>
     </div>
 
     <script src="main.js"></script>
