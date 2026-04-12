@@ -12,16 +12,17 @@ const CONFIG = {
 const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const CODIGO_PROF   = 'PR0F3SOR';
-const POLL_INTERVAL = 10000; // 10 segundos
+const POLL_INTERVAL = 10000;
 
 // ── Estado ────────────────────────────────────────────────────────
-let tokenClient    = null;
-let accessToken    = null;
-let usuarioActual  = null;
-let alumnos        = [];
-let tamañoGrupo    = 30;
-let modoProfesor   = false;
-let pollTimer      = null;
+let tokenClient   = null;
+let accessToken   = null;
+let usuarioActual = null;
+let alumnos       = [];
+let tamañoGrupo   = 30;
+let maxVotos      = 1;   // preferencias por alumno
+let modoProfesor  = false;
+let pollTimer     = null;
 
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
@@ -119,7 +120,7 @@ function validarProfesor() {
         document.getElementById('panelProfesor').style.display  = '';
         document.getElementById('accesoProfesor').style.display = 'none';
         document.getElementById('tamañoValor').textContent      = tamañoGrupo;
-        // Cargar votos inmediatamente y arrancar el poll
+        document.getElementById('maxVotosValor').textContent    = maxVotos;
         actualizarVotosProfesor();
         arrancarPoll();
     } else {
@@ -144,8 +145,16 @@ function cambiarTamaño(delta) {
     document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
 }
 
+function cambiarMaxVotos(delta) {
+    maxVotos = Math.max(1, Math.min(10, maxVotos + delta));
+    document.getElementById('maxVotosValor').textContent = maxVotos;
+    document.getElementById('maxVotosInfo').textContent  = maxVotos;
+    // Regenerar los selects del alumno con el nuevo número
+    renderizarSelectsAlumno();
+}
+
 // ══════════════════════════════════════════════════════════════════
-//  POLLING (contador de votos en tiempo real)
+//  POLLING
 // ══════════════════════════════════════════════════════════════════
 function arrancarPoll() {
     detenerPoll();
@@ -163,26 +172,28 @@ async function actualizarVotosProfesor() {
         const nVotos   = Object.keys(votos).length;
         const nAlumnos = alumnos.length;
 
-        document.getElementById('votosNum').textContent  = nVotos;
-        document.getElementById('votosDe').textContent   = `/ ${nAlumnos} alumnos`;
+        document.getElementById('votosNum').textContent = nVotos;
+        document.getElementById('votosDe').textContent  = `/ ${nAlumnos} alumnos`;
 
         const pct = nAlumnos > 0 ? Math.round((nVotos / nAlumnos) * 100) : 0;
         document.getElementById('votosBarra').style.width = pct + '%';
 
-        // Lista de quién ha votado
-        const lista = document.getElementById('votosLista');
-        lista.innerHTML = Object.entries(votos).map(([nombre, v]) =>
-            `<span class="voto-chip">${nombre}${v.preferencia ? ` → ${v.preferencia}` : ' (sin pref.)'}</span>`
-        ).join('');
-    } catch { /* silencioso — el poll no debe romper la UI */ }
+        document.getElementById('votosLista').innerHTML = Object.entries(votos).map(([nombre, v]) => {
+            const prefs = v.preferencias?.filter(Boolean) || (v.preferencia ? [v.preferencia] : []);
+            const prefStr = prefs.length ? prefs.join(', ') : 'sin pref.';
+            return `<span class="voto-chip">${nombre} → ${prefStr}</span>`;
+        }).join('');
+    } catch { /* silencioso */ }
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  GOOGLE SHEETS — Config
-//  Estructura de la hoja Config:
-//    Fila 1:  __TAMAÑO__ | valor
-//    Filas 2…N: nombre alumno
-//    Filas N+1…: __GRUPO_X__ | alumno1,alumno2,…
+//  Estructura:
+//    __TAMAÑO__    | valor
+//    __MAX_VOTOS__ | valor
+//    nombre alumno | (vacío)
+//    ...
+//    __GRUPO_X__   | alumno1,alumno2,…
 // ══════════════════════════════════════════════════════════════════
 async function cargarConfigDesdeSheets() {
     try {
@@ -192,48 +203,49 @@ async function cargarConfigDesdeSheets() {
         });
         const filas = res.result.values || [];
 
-        let nuevoTamaño   = 30;
-        let nuevosAlumnos = [];
+        let nuevoTamaño    = 30;
+        let nuevoMaxVotos  = 1;
+        let nuevosAlumnos  = [];
 
         filas.forEach(fila => {
             if (!fila[0]) return;
             const clave = fila[0].trim();
-            if (clave === '__TAMAÑO__' && fila[1]) {
-                nuevoTamaño = parseInt(fila[1]) || 30;
-            } else if (!clave.startsWith('__')) {
-                nuevosAlumnos.push(clave);
-            }
-            // Las filas __GRUPO_X__ se ignoran aquí (son solo para el profe)
+            if (clave === '__TAMAÑO__')    { nuevoTamaño   = parseInt(fila[1]) || 30; }
+            else if (clave === '__MAX_VOTOS__') { nuevoMaxVotos = parseInt(fila[1]) || 1; }
+            else if (!clave.startsWith('__'))  { nuevosAlumnos.push(clave); }
         });
 
         tamañoGrupo = nuevoTamaño;
+        maxVotos    = nuevoMaxVotos;
         alumnos     = nuevosAlumnos;
 
         document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
+        document.getElementById('maxVotosInfo').textContent    = maxVotos;
         document.getElementById('tamañoValor').textContent     = tamañoGrupo;
+        document.getElementById('maxVotosValor').textContent   = maxVotos;
+
         actualizarListaActiva();
-        inicializarSelect();
+        renderizarSelectsAlumno();
 
     } catch (err) {
         console.warn('Config no encontrada:', err.message);
+        renderizarSelectsAlumno(); // render con defaults
     }
 }
 
 async function guardarConfigEnSheets(grupos) {
-    // grupos es opcional — se pasa solo cuando el profe genera grupos
     const valores = [
-        ['__TAMAÑO__', tamañoGrupo],
+        ['__TAMAÑO__',    tamañoGrupo],
+        ['__MAX_VOTOS__', maxVotos],
         ...alumnos.map(n => [n]),
     ];
 
-    // Añadir grupos al final si se proporcionan
     if (grupos && grupos.length > 0) {
         grupos.forEach((g, i) => {
             valores.push([`__GRUPO_${i + 1}__`, g.join(',')]);
         });
     }
 
-    // 1. Limpiar
     const resClear = await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
         range:         `${CONFIG.sheetConfig}!A:B`,
@@ -242,7 +254,6 @@ async function guardarConfigEnSheets(grupos) {
         throw new Error(`Error al limpiar Config (${resClear.status}). ¿Existe la pestaña "Config"?`);
     }
 
-    // 2. Escribir
     const resUpdate = await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:    CONFIG.spreadsheetId,
         range:            `${CONFIG.sheetConfig}!A1`,
@@ -256,18 +267,30 @@ async function guardarConfigEnSheets(grupos) {
 
 // ══════════════════════════════════════════════════════════════════
 //  GOOGLE SHEETS — Votos
+//  Columnas: A=email, B=nombre, C=pref1, D=pref2, …, última=timestamp
 // ══════════════════════════════════════════════════════════════════
 async function leerVotos() {
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A2:D`,
+            range:         `${CONFIG.sheetVotos}!A2:Z`,
         });
         const filas = res.result.values || [];
         const votos = {};
         filas.forEach(fila => {
-            const [email, nombre, preferencia] = fila;
-            if (nombre) votos[nombre] = { email, preferencia: preferencia || null };
+            const email  = fila[0];
+            const nombre = fila[1];
+            if (!nombre) return;
+            // Columnas C en adelante son preferencias, la última es timestamp
+            // Detectamos timestamp por el formato ISO (contiene 'T' y 'Z')
+            const resto = fila.slice(2);
+            const tsIdx = resto.findLastIndex(v => v && v.includes('T') && v.includes('-'));
+            const prefs = tsIdx >= 0 ? resto.slice(0, tsIdx) : resto;
+            votos[nombre] = {
+                email,
+                preferencias: prefs.filter(Boolean),
+                preferencia:  prefs[0] || null, // compatibilidad
+            };
         });
         return votos;
     } catch (err) {
@@ -276,7 +299,11 @@ async function leerVotos() {
     }
 }
 
-async function escribirVoto(nombre, email, preferencia) {
+async function escribirVoto(nombre, email, preferencias) {
+    // preferencias: array de strings (puede tener vacíos, los filtramos)
+    const prefsLimpias = preferencias.filter(Boolean);
+
+    // Buscar fila existente
     let filaExistente = null;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
@@ -289,23 +316,29 @@ async function escribirVoto(nombre, email, preferencia) {
         });
     } catch { /* vacía */ }
 
-    const valores = [[email, nombre, preferencia || '', new Date().toISOString()]];
+    // Fila: email, nombre, pref1, pref2, …, timestamp
+    const fila = [email, nombre, ...prefsLimpias, new Date().toISOString()];
 
     if (filaExistente) {
+        // Primero limpiar la fila entera para no dejar columnas viejas
+        await gapi.client.sheets.spreadsheets.values.clear({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range:         `${CONFIG.sheetVotos}!A${filaExistente}:Z${filaExistente}`,
+        });
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId:    CONFIG.spreadsheetId,
-            range:            `${CONFIG.sheetVotos}!A${filaExistente}:D${filaExistente}`,
+            range:            `${CONFIG.sheetVotos}!A${filaExistente}`,
             valueInputOption: 'RAW',
-            resource:         { values: valores },
+            resource:         { values: [fila] },
         });
     } else {
         await asegurarCabeceraVotos();
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId:    CONFIG.spreadsheetId,
-            range:            `${CONFIG.sheetVotos}!A:D`,
+            range:            `${CONFIG.sheetVotos}!A:A`,
             valueInputOption: 'RAW',
             insertDataOption: 'INSERT_ROWS',
-            resource:         { values: valores },
+            resource:         { values: [fila] },
         });
     }
 }
@@ -314,14 +347,17 @@ async function asegurarCabeceraVotos() {
     try {
         const res = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A1:D1`,
+            range:         `${CONFIG.sheetVotos}!A1:B1`,
         });
         if (!res.result.values?.[0]) {
+            const cabecera = ['Email', 'Nombre',
+                ...Array.from({length: 10}, (_, i) => `Preferencia ${i + 1}`),
+                'Timestamp'];
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId:    CONFIG.spreadsheetId,
-                range:            `${CONFIG.sheetVotos}!A1:D1`,
+                range:            `${CONFIG.sheetVotos}!A1`,
                 valueInputOption: 'RAW',
-                resource:         { values: [['Email','Nombre','Preferencia','Timestamp']] },
+                resource:         { values: [cabecera] },
             });
         }
     } catch { /* ignorar */ }
@@ -332,17 +368,71 @@ async function resetearVotos() {
     try {
         await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A2:D`,
+            range:         `${CONFIG.sheetVotos}!A2:Z`,
         });
-        document.getElementById('seccionGrupos').style.display    = 'none';
-        document.getElementById('resultadoProfesor').innerHTML     = '';
-        document.getElementById('profesorStatus').style.display   = 'none';
+        document.getElementById('seccionGrupos').style.display  = 'none';
+        document.getElementById('resultadoProfesor').innerHTML  = '';
+        document.getElementById('profesorStatus').style.display = 'none';
         await actualizarVotosProfesor();
         alert('✅ Votos borrados correctamente.');
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         alert('❌ Error al borrar votos: ' + msg);
     }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SELECTS DINÁMICOS (alumno)
+// ══════════════════════════════════════════════════════════════════
+function renderizarSelectsAlumno() {
+    const contenedor = document.getElementById('selectsPreferencias');
+    contenedor.innerHTML = '';
+
+    for (let i = 0; i < maxVotos; i++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'form-group';
+
+        const label = document.createElement('label');
+        label.setAttribute('for', `pref_${i}`);
+        label.textContent = maxVotos === 1
+            ? '¿Con quién quieres ir? (opcional)'
+            : `${i + 1}ª preferencia${i === 0 ? ' (principal)' : ' (opcional)'}`;
+
+        const select = document.createElement('select');
+        select.id = `pref_${i}`;
+        select.innerHTML = '<option value="">-- Sin preferencia --</option>';
+
+        alumnos.forEach(a => {
+            if (a !== (usuarioActual?.nombre ?? '')) {
+                const o = document.createElement('option');
+                o.value = o.textContent = a;
+                select.appendChild(o);
+            }
+        });
+
+        // Evitar repetir la misma persona en varias preferencias
+        select.addEventListener('change', () => evitarDuplicadosEnSelects());
+
+        wrap.appendChild(label);
+        wrap.appendChild(select);
+        contenedor.appendChild(wrap);
+    }
+}
+
+function evitarDuplicadosEnSelects() {
+    const selects = Array.from(document.querySelectorAll('[id^="pref_"]'));
+    const elegidos = selects.map(s => s.value).filter(Boolean);
+
+    selects.forEach(sel => {
+        const valorActual = sel.value;
+        Array.from(sel.options).forEach(opt => {
+            if (opt.value && opt.value !== valorActual && elegidos.includes(opt.value)) {
+                opt.disabled = true;
+            } else {
+                opt.disabled = false;
+            }
+        });
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -414,13 +504,12 @@ async function usarAlumnos() {
     status.innerHTML     = '⏳ Guardando en Google Sheets…';
 
     try {
-        await guardarConfigEnSheets(null); // sin grupos todavía
+        await guardarConfigEnSheets(null);
         actualizarListaActiva();
-        inicializarSelect();
+        renderizarSelectsAlumno();
         document.getElementById('listaPreview').style.display = 'none';
         status.className = 'upload-status success';
-        status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong>.`;
-        // Actualizar contador de votos
+        status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong> · <strong>${maxVotos}</strong> voto(s) por alumno.`;
         await actualizarVotosProfesor();
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
@@ -435,39 +524,31 @@ function actualizarListaActiva() {
         ? alumnos.map(n => `<span class="chip-activo">${n}</span>`).join('')
         : '<span class="chip-inactive">El profesor aún no ha cargado la lista</span>';
     document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
-}
-
-function inicializarSelect() {
-    const select = document.getElementById('companero');
-    select.innerHTML = '<option value="">-- Sin preferencia --</option>';
-    alumnos.forEach(a => {
-        if (a !== (usuarioActual?.nombre ?? '')) {
-            const o = document.createElement('option');
-            o.value = o.textContent = a;
-            select.appendChild(o);
-        }
-    });
+    document.getElementById('maxVotosInfo').textContent    = maxVotos;
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  ALUMNO: ENVIAR PREFERENCIA
+//  ALUMNO: ENVIAR PREFERENCIAS
 // ══════════════════════════════════════════════════════════════════
 async function enviarPreferencia() {
     if (!usuarioActual)  { alert('Inicia sesión primero.'); return; }
     if (!alumnos.length) { alert('El profesor aún no ha publicado la lista.'); return; }
 
-    const preferencia = document.getElementById('companero').value.trim();
-    const st          = document.getElementById('alumnoStatus');
+    // Recoger todos los selects
+    const selects     = Array.from(document.querySelectorAll('[id^="pref_"]'));
+    const preferencias = selects.map(s => s.value.trim()).filter(Boolean);
+
+    const st = document.getElementById('alumnoStatus');
     st.style.display = 'block';
     st.className     = 'upload-status loading';
-    st.innerHTML     = '⏳ Enviando preferencia…';
+    st.innerHTML     = '⏳ Enviando preferencias…';
 
     try {
-        await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencia);
+        await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencias);
         st.className = 'upload-status success';
-        st.innerHTML = preferencia
-            ? `✅ Preferencia enviada: quieres ir con <strong>${preferencia}</strong>.`
-            : '✅ Preferencia enviada: sin preferencia.';
+        st.innerHTML = preferencias.length
+            ? `✅ Preferencias enviadas: <strong>${preferencias.join(', ')}</strong>.`
+            : '✅ Enviado sin preferencia.';
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         st.className = 'upload-status error';
@@ -476,7 +557,8 @@ async function enviarPreferencia() {
 }
 
 function resetearAlumno() {
-    document.getElementById('companero').value             = '';
+    document.querySelectorAll('[id^="pref_"]').forEach(s => { s.value = ''; });
+    evitarDuplicadosEnSelects();
     document.getElementById('alumnoStatus').style.display = 'none';
 }
 
@@ -495,11 +577,10 @@ async function generarGrupos() {
         const votos  = await leerVotos();
         const grupos = calcularGrupos(alumnos, votos);
 
-        // Guardar grupos en Config
         await guardarConfigEnSheets(grupos);
 
         st.className = 'upload-status success';
-        st.innerHTML = `✅ ${grupos.length} grupos generados y guardados en el Sheet.`;
+        st.innerHTML = `✅ ${grupos.length} grupos generados y guardados.`;
 
         mostrarResultadoProfesor(grupos, votos);
     } catch (err) {
@@ -510,22 +591,32 @@ async function generarGrupos() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  ALGORITMO DE EMPAREJAMIENTO
+//  ALGORITMO DE EMPAREJAMIENTO (multi-preferencia)
+//
+//  Paso 1: para cada alumno A, recorrer sus preferencias en orden.
+//          Si B también tiene a A como alguna de sus preferencias → par mutuo.
+//  Paso 2: no emparejados → pool aleatorio → completar grupos.
 // ══════════════════════════════════════════════════════════════════
 function calcularGrupos(listaAlumnos, votos) {
+    // Construir mapa nombre → array de preferencias
     const prefs = {};
-    listaAlumnos.forEach(a => { prefs[a] = votos[a]?.preferencia ?? null; });
+    listaAlumnos.forEach(a => {
+        prefs[a] = votos[a]?.preferencias?.filter(Boolean) || [];
+    });
 
     const asignado = new Set();
     const grupos   = [];
 
-    // Paso 1: pares mutuos
+    // Paso 1: pares mutuos (A tiene a B en sus prefs Y B tiene a A en las suyas)
     listaAlumnos.forEach(a => {
         if (asignado.has(a)) return;
-        const b = prefs[a];
-        if (b && prefs[b] === a && !asignado.has(b)) {
-            asignado.add(a); asignado.add(b);
-            grupos.push([a, b]);
+        for (const b of prefs[a]) {
+            if (!b || asignado.has(b)) continue;
+            if (prefs[b]?.includes(a)) {
+                asignado.add(a); asignado.add(b);
+                grupos.push([a, b]);
+                break;
+            }
         }
     });
 
@@ -555,11 +646,10 @@ function shuffle(arr) {
 //  MOSTRAR GRUPOS (solo profesor)
 // ══════════════════════════════════════════════════════════════════
 function mostrarResultadoProfesor(grupos, votos) {
-    const seccion = document.getElementById('seccionGrupos');
-    const div     = document.getElementById('resultadoProfesor');
-    seccion.style.display = '';
-
+    document.getElementById('seccionGrupos').style.display = '';
+    const div      = document.getElementById('resultadoProfesor');
     const nVotaron = Object.keys(votos).length;
+
     let html = `<div class="stats" style="margin-bottom:16px">
         <div class="stat"><div class="stat-label">Grupos</div><div class="stat-value">${grupos.length}</div></div>
         <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${tamañoGrupo}</div></div>
@@ -571,7 +661,8 @@ function mostrarResultadoProfesor(grupos, votos) {
         html += `<div class="grupo-card" style="animation-delay:${delay}ms">
             <div class="grupo-titulo">Grupo ${i + 1} <span class="grupo-count">(${g.length})</span></div>
             <div class="chips">${g.map((n, j) => {
-                const esMutuo = votos[n]?.preferencia && votos[votos[n].preferencia]?.preferencia === n;
+                // Mostrar 🤝 si hay mutualidad con cualquier preferencia
+                const esMutuo = prefs_mutuos(n, g, votos);
                 return `<span class="chip" style="animation-delay:${delay + j * 30}ms">${n}${esMutuo ? ' 🤝' : ''}</span>`;
             }).join('')}</div>
         </div>`;
@@ -579,4 +670,9 @@ function mostrarResultadoProfesor(grupos, votos) {
 
     html += '</div>';
     div.innerHTML = html;
+}
+
+function prefs_mutuos(nombre, grupo, votos) {
+    const misPrefs = votos[nombre]?.preferencias || [];
+    return misPrefs.some(p => p && grupo.includes(p) && (votos[p]?.preferencias || []).includes(nombre));
 }
