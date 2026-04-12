@@ -88,18 +88,19 @@ h1 { text-align: center; color: #333; font-size: 26px; }
 }
 
 /* ── Formulario alumno ───────────────────────────── */
-.form-group { margin-bottom: 20px; }
-label { display: block; margin-bottom: 8px; color: #555; font-weight: 600; }
+.form-group { margin-bottom: 14px; }
+label { display: block; margin-bottom: 6px; color: #555; font-weight: 600; font-size: 14px; }
 select {
-    width: 100%; padding: 12px; border: 2px solid #e0e0e0;
-    border-radius: 8px; font-size: 16px; background: white;
+    width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0;
+    border-radius: 8px; font-size: 15px; background: white; transition: border-color 0.2s;
 }
 select:focus { outline: none; border-color: #667eea; }
+select option:disabled { color: #bbb; }
 
-.button-group { display: flex; gap: 10px; margin-bottom: 20px; }
+.button-group { display: flex; gap: 10px; margin-top: 6px; margin-bottom: 0; }
 button {
     flex: 1; padding: 12px; border: none; border-radius: 8px;
-    font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s;
 }
 .btn-emparejar {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
@@ -170,7 +171,7 @@ button {
 .profesor-seccion:last-child { border-bottom: none; }
 .profesor-label { display: block; font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 12px; }
 
-/* Tamaño control */
+/* Tamaño / maxVotos control */
 .tamaño-control { display: flex; align-items: center; gap: 16px; }
 .btn-tamaño {
     width: 40px; height: 40px; background: #f59e0b; color: white;
@@ -180,40 +181,30 @@ button {
 }
 .btn-tamaño:hover { background: #d97706; }
 .tamaño-valor { font-size: 36px; font-weight: 900; color: #92400e; min-width: 60px; text-align: center; }
+.tamaño-nota  { font-size: 12px; color: #b45309; margin-top: 8px; }
 
 /* ── Votos en tiempo real ────────────────────────── */
 .votos-live {
     background: #fff; border: 1px solid #fde68a;
     border-radius: 10px; padding: 16px; margin-bottom: 16px;
 }
-.votos-contador {
-    display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
-}
-.votos-num {
-    font-size: 42px; font-weight: 900; color: #d97706; line-height: 1;
-}
-.votos-de { font-size: 15px; color: #92400e; font-weight: 600; }
+.votos-contador { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.votos-num { font-size: 42px; font-weight: 900; color: #d97706; line-height: 1; }
+.votos-de  { font-size: 15px; color: #92400e; font-weight: 600; }
 
 .votos-barra-wrap {
     background: #fde68a; border-radius: 20px; height: 8px; margin-bottom: 12px; overflow: hidden;
 }
 .votos-barra {
     background: linear-gradient(90deg, #f59e0b, #d97706);
-    height: 100%; border-radius: 20px;
-    transition: width 0.5s ease;
+    height: 100%; border-radius: 20px; transition: width 0.5s ease;
 }
-
-.votos-lista {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px;
-}
+.votos-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; }
 .voto-chip {
     background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
     padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
 }
-
-.votos-refresh {
-    font-size: 12px; color: #b45309; display: flex; align-items: center; gap: 8px;
-}
+.votos-refresh { font-size: 12px; color: #b45309; display: flex; align-items: center; gap: 8px; }
 .btn-refresh {
     background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
     padding: 3px 10px; border-radius: 6px; font-size: 12px;
@@ -221,9 +212,9 @@ button {
 }
 .btn-refresh:hover { background: #fde68a; }
 
-/* ── Botón generar grupos ────────────────────────── */
+/* ── Botón generar ───────────────────────────────── */
 .btn-generar {
-    width: 100%; padding: 14px; margin-top: 0;
+    width: 100%; padding: 14px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white; border: none; border-radius: 10px;
     font-size: 17px; font-weight: 700; cursor: pointer;
@@ -231,12 +222,8 @@ button {
 }
 .btn-generar:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
 
-/* ── Grupos generados (profesor) ─────────────────── */
-.grupos-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-}
+/* ── Grupos (profesor) ───────────────────────────── */
+.grupos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
 .stat  { background: #fff; border: 2px solid #fde68a; padding: 12px; border-radius: 8px; text-align: center; }
 .stat-label { color: #b45309; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
@@ -262,7 +249,7 @@ button {
 }
 @keyframes chipSlide { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
 
-/* ── Botón peligroso ─────────────────────────────── */
+/* ── Peligroso ───────────────────────────────────── */
 .btn-danger {
     background: #fee2e2; color: #b91c1c; border: 2px solid #fca5a5;
     padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
