@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agrupador de Alumnos</title>
+    <title>Emparejar Alumnos</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
 
-    <!-- ── PANTALLA: Login ─────────────────────────────────── -->
-    <div id="pantallaLogin" class="pantalla">
+    <!-- ── PANTALLA: Login ─────────────────────────────────────────── -->
+    <div id="pantallaLogin" class="pantalla activa">
         <div class="login-box">
-            <div class="login-logo">🎓</div>
-            <h1>Agrupador de Alumnos</h1>
-            <p class="login-desc">Inicia sesión con tu cuenta de Google para registrar tus preferencias de grupo.</p>
+            <div class="login-logo">📚</div>
+            <h1>Emparejar Alumnos</h1>
+            <p class="login-desc">Inicia sesión con tu cuenta de Google para registrar tu preferencia de grupo.</p>
             <button class="btn-google" onclick="iniciarSesion()">
                 <svg width="20" height="20" viewBox="0 0 48 48">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -26,11 +26,62 @@
                 Iniciar sesión con Google
             </button>
             <div id="loginError" class="error-login"></div>
+            <div class="login-sep"><span>¿Eres profesor?</span></div>
+            <button class="btn-profesor-acceso" onclick="mostrarPantallaProfesor()">🎓 Acceder como profesor</button>
         </div>
-        <div class="version-badge">v1.6</div>
+        <div class="version-badge">v2.0</div>
     </div>
 
-    <!-- ── PANTALLA: App ───────────────────────────────────── -->
+    <!-- ── PANTALLA: Profesor (sin login) ─────────────────────────── -->
+    <div id="pantallaProfesor" class="pantalla" style="display:none">
+        <div class="profesor-setup-box">
+            <button class="btn-volver" onclick="volverAlLogin()">← Volver</button>
+            <div class="login-logo">🎓</div>
+            <h1>Panel del Profesor</h1>
+
+            <!-- Paso 1: código de acceso -->
+            <div id="pasoCodigoProf" class="paso-setup">
+                <p class="setup-desc">Introduce el código de acceso del profesor para continuar.</p>
+                <input type="password" id="inputCodigoProf" placeholder="Código de profesor"
+                       class="input-setup" onkeydown="if(event.key==='Enter') validarCodigoProf()">
+                <button class="btn-setup-primary" onclick="validarCodigoProf()">Continuar →</button>
+                <div id="errorCodigoProf" class="error-setup" style="display:none">Código incorrecto</div>
+            </div>
+
+            <!-- Paso 2: código de clase -->
+            <div id="pasoCodigoClase" class="paso-setup" style="display:none">
+                <p class="setup-desc">Introduce o crea el código de tu clase. Los alumnos usarán este código para unirse.</p>
+                <input type="text" id="inputCodigoClase" placeholder="Ej: 1BACH-A" maxlength="20"
+                       class="input-setup input-clase" onkeydown="if(event.key==='Enter') validarCodigoClase()"
+                       oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\-]/g,'')">
+                <button class="btn-setup-primary" onclick="validarCodigoClase()">Entrar →</button>
+                <div id="errorCodigoClase" class="error-setup" style="display:none">Introduce un código válido (letras y números)</div>
+                <div class="clase-hint">El enlace para alumnos será:<br>
+                    <span class="clase-url-preview" id="urlPreview">https://agrupador-de-alumnos.vercel.app/<em>CODIGO</em></span>
+                </div>
+            </div>
+        </div>
+        <div class="version-badge">v2.0</div>
+    </div>
+
+    <!-- ── PANTALLA: Alumno pide código de clase ──────────────────── -->
+    <div id="pantallaCodigoClase" class="pantalla" style="display:none">
+        <div class="login-box">
+            <div class="login-logo">🔑</div>
+            <h1>Unirse a una clase</h1>
+            <p class="login-desc">Tu profesor te habrá dado un código o enlace de clase. Introdúcelo aquí.</p>
+            <input type="text" id="inputCodigoAlumno" placeholder="Código de clase (Ej: 1BACH-A)"
+                   class="input-setup input-clase" maxlength="20"
+                   onkeydown="if(event.key==='Enter') unirseAClase()"
+                   oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\-]/g,'')">
+            <button class="btn-setup-primary" style="margin-top:12px" onclick="unirseAClase()">Unirse →</button>
+            <div id="errorCodigoAlumno" class="error-setup" style="display:none">Código de clase no válido</div>
+            <button class="btn-logout" style="margin-top:18px; width:100%; flex:none" onclick="cerrarSesion()">Cerrar sesión</button>
+        </div>
+        <div class="version-badge">v2.0</div>
+    </div>
+
+    <!-- ── PANTALLA: App Alumno ────────────────────────────────────── -->
     <div id="pantallaApp" class="pantalla" style="display:none">
         <div class="container">
 
@@ -44,15 +95,16 @@
                         <div class="user-email" id="userEmail">—</div>
                     </div>
                 </div>
-                <button class="btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
+                <div class="header-right">
+                    <span class="clase-badge" id="claseBadge">—</span>
+                    <button class="btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
+                </div>
             </div>
 
-            <h1>🎓 Agrupador de Alumnos</h1>
+            <h1>📚 Emparejar Alumnos</h1>
 
-            <!-- ══ VISTA ALUMNO ══════════════════════════════════ -->
+            <!-- ══ VISTA ALUMNO ══════════════════════════════════════ -->
             <div id="vistaAlumno">
-
-                <!-- Lista activa -->
                 <div class="section-card">
                     <div class="section-header">
                         <span class="section-icon">👥</span>
@@ -62,123 +114,125 @@
                         <span class="chip-inactive">El profesor aún no ha cargado la lista</span>
                     </div>
                     <div class="info-box" style="margin-top:12px;margin-bottom:0">
-                        Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas ·
-                        Puedes indicar hasta <strong id="maxVotosInfo">—</strong> preferencia(s).
+                        Grupos de hasta <strong id="tamañoGrupoInfo">—</strong> personas.
                         Las preferencias <strong>mutuas</strong> se emparejan primero.
                     </div>
                 </div>
 
-                <!-- Enviar preferencias -->
                 <div class="section-card">
                     <div class="section-header">
                         <span class="section-icon">🎯</span>
-                        <h2>Mis preferencias de grupo</h2>
+                        <h2>Mi preferencia de grupo</h2>
                     </div>
-                    <!-- Los selects se generan dinámicamente según maxVotos -->
-                    <div id="selectsPreferencias"></div>
+                    <div class="form-group">
+                        <label for="companero">¿Con quién quieres ir? (opcional)</label>
+                        <select id="companero">
+                            <option value="">-- Sin preferencia --</option>
+                        </select>
+                    </div>
                     <div class="button-group">
-                        <button class="btn-emparejar" onclick="enviarPreferencia()">Enviar preferencias</button>
+                        <button class="btn-emparejar" onclick="enviarPreferencia()">Enviar preferencia</button>
                         <button class="btn-reset" onclick="resetearAlumno()">Limpiar</button>
                     </div>
                     <div id="alumnoStatus" class="upload-status" style="display:none"></div>
                 </div>
-
             </div><!-- /vistaAlumno -->
 
-            <!-- ══ PANEL PROFESOR ════════════════════════════════ -->
-            <div id="panelProfesor" class="panel-profesor" style="display:none">
-                <div class="profesor-header">
-                    <span>🎓 Panel del Profesor</span>
-                    <button class="btn-cerrar-profesor" onclick="cerrarModoProfesor()">✕ Salir</button>
-                </div>
+        </div>
+        <div class="version-badge">v2.0</div>
+    </div>
 
-                <!-- Tamaño de grupo -->
-                <div class="profesor-seccion">
-                    <label class="profesor-label">Tamaño máximo de grupo</label>
-                    <div class="tamaño-control">
-                        <button class="btn-tamaño" onclick="cambiarTamaño(-1)">−</button>
-                        <span id="tamañoValor" class="tamaño-valor">30</span>
-                        <button class="btn-tamaño" onclick="cambiarTamaño(1)">+</button>
-                    </div>
-                </div>
+    <!-- ── PANTALLA: Panel Profesor (con clase activa) ─────────────── -->
+    <div id="pantallaProfesorActivo" class="pantalla" style="display:none">
+        <div class="container">
 
-                <!-- Máx. votos por alumno -->
-                <div class="profesor-seccion">
-                    <label class="profesor-label">Preferencias por alumno (votos)</label>
-                    <div class="tamaño-control">
-                        <button class="btn-tamaño" onclick="cambiarMaxVotos(-1)">−</button>
-                        <span id="maxVotosValor" class="tamaño-valor">1</span>
-                        <button class="btn-tamaño" onclick="cambiarMaxVotos(1)">+</button>
-                    </div>
-                    <div class="tamaño-nota">Número de compañeros que cada alumno puede indicar</div>
+            <div class="profesor-header-bar">
+                <div>
+                    <div style="font-size:18px;font-weight:800;color:#92400e">🎓 Panel del Profesor</div>
+                    <div class="clase-badge-prof" id="claseBadgeProf">—</div>
                 </div>
-
-                <!-- Lista de alumnos -->
-                <div class="profesor-seccion">
-                    <label class="profesor-label">Lista de alumnos</label>
-                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                        <div class="upload-icon">📄</div>
-                        <div class="upload-text">Haz clic para seleccionar un archivo</div>
-                        <div class="upload-hint">Solo archivos de texto (.txt) — un nombre por línea</div>
-                        <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="cargarArchivo(event)">
-                    </div>
-                    <div id="uploadStatus" class="upload-status" style="display:none"></div>
-                    <div id="listaPreview" style="display:none">
-                        <div class="preview-header">
-                            <span>Alumnos encontrados (<span id="countAlumnos">0</span>)</span>
-                            <button class="btn-small" onclick="usarAlumnos()">✓ Publicar lista</button>
-                        </div>
-                        <div id="alumnosDetectados" class="alumnos-chips"></div>
-                        <div class="preview-note">Ordenados alfabéticamente. Puedes editar antes de publicar.</div>
-                        <textarea id="editarAlumnos" class="editar-lista" placeholder="Un nombre por línea..."></textarea>
-                    </div>
-                </div>
-
-                <!-- Votos en tiempo real -->
-                <div class="profesor-seccion">
-                    <label class="profesor-label">Votos recibidos</label>
-                    <div class="votos-live">
-                        <div class="votos-contador">
-                            <span class="votos-num" id="votosNum">0</span>
-                            <span class="votos-de" id="votosDe">/ — alumnos</span>
-                        </div>
-                        <div class="votos-barra-wrap">
-                            <div class="votos-barra" id="votosBarra" style="width:0%"></div>
-                        </div>
-                        <div class="votos-lista" id="votosLista"></div>
-                        <div class="votos-refresh">Actualización automática cada 10 s
-                            <button class="btn-refresh" onclick="actualizarVotosProfesor()">↻ Ahora</button>
-                        </div>
-                    </div>
-                    <button class="btn-generar" onclick="generarGrupos()">🔀 Generar grupos</button>
-                    <div id="profesorStatus" class="upload-status" style="display:none"></div>
-                </div>
-
-                <!-- Grupos generados -->
-                <div class="profesor-seccion" id="seccionGrupos" style="display:none">
-                    <label class="profesor-label">Grupos generados</label>
-                    <div id="resultadoProfesor"></div>
-                </div>
-
-                <!-- Acciones -->
-                <div class="profesor-seccion">
-                    <label class="profesor-label">Acciones</label>
-                    <button class="btn-danger" onclick="resetearVotos()">🗑️ Borrar todos los votos</button>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn-copiar-enlace" onclick="copiarEnlaceClase()" title="Copiar enlace para alumnos">🔗 Copiar enlace</button>
+                    <button class="btn-cerrar-profesor" onclick="cerrarPanelProfesor()">✕ Salir</button>
                 </div>
             </div>
 
-            <!-- ══ ZONA ACCESO PROFESOR ══════════════════════════ -->
-            <div class="zona-profesor">
-                <div id="accesoProfesor" class="acceso-profesor">
-                    <input type="password" id="codigoProfesor" placeholder="Código de acceso profesor"
-                           class="input-codigo" onkeydown="if(event.key==='Enter') validarProfesor()">
-                    <button class="btn-validar" onclick="validarProfesor()">Acceder</button>
-                    <div id="errorCodigo" class="error-codigo" style="display:none">Código incorrecto</div>
+            <!-- Enlace de clase -->
+            <div class="enlace-clase-box" id="enlaceClaseBox">
+                <span class="enlace-label">Enlace para alumnos:</span>
+                <span class="enlace-url" id="enlaceClaseUrl">—</span>
+            </div>
+
+            <!-- Tamaño de grupo -->
+            <div class="profesor-seccion">
+                <label class="profesor-label">Tamaño máximo de grupo</label>
+                <div class="tamaño-control">
+                    <button class="btn-tamaño" onclick="cambiarTamaño(-1)">−</button>
+                    <span id="tamañoValor" class="tamaño-valor">30</span>
+                    <button class="btn-tamaño" onclick="cambiarTamaño(1)">+</button>
                 </div>
+            </div>
+
+            <!-- Lista de alumnos -->
+            <div class="profesor-seccion">
+                <label class="profesor-label">Lista de alumnos</label>
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">⬆️</div>
+                    <div class="upload-text">Arrastra un archivo o haz clic para seleccionar</div>
+                    <div class="upload-hint">PDF, imagen (JPG/PNG), texto (.txt) o Word (.docx)</div>
+                    <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="cargarArchivo(event)">
+                </div>
+                <div id="uploadStatus" class="upload-status" style="display:none"></div>
+                <div id="listaPreview" style="display:none">
+                    <div class="preview-header">
+                        <span>Alumnos encontrados (<span id="countAlumnos">0</span>)</span>
+                        <button class="btn-small" onclick="usarAlumnos()">✓ Publicar lista</button>
+                    </div>
+                    <div id="alumnosDetectados" class="alumnos-chips"></div>
+                    <div class="preview-note">Ordenados alfabéticamente. Puedes editar antes de publicar.</div>
+                    <textarea id="editarAlumnos" class="editar-lista" placeholder="Un nombre por línea..."></textarea>
+                </div>
+                <!-- Lista publicada actual -->
+                <div id="listaPublicadaProf" style="display:none; margin-top:12px">
+                    <div class="preview-header"><span>Lista publicada (<span id="countAlumnosPublicados">0</span> alumnos)</span></div>
+                    <div id="alumnosPublicados" class="alumnos-chips"></div>
+                </div>
+            </div>
+
+            <!-- Votos en tiempo real + generar grupos -->
+            <div class="profesor-seccion">
+                <label class="profesor-label">Votos recibidos</label>
+                <div class="votos-live">
+                    <div class="votos-contador">
+                        <span class="votos-num" id="votosNum">0</span>
+                        <span class="votos-de" id="votosDe">/ — alumnos</span>
+                    </div>
+                    <div class="votos-barra-wrap">
+                        <div class="votos-barra" id="votosBarra" style="width:0%"></div>
+                    </div>
+                    <div class="votos-lista" id="votosLista"></div>
+                    <div class="votos-refresh">Actualización automática cada 10 s
+                        <button class="btn-refresh" onclick="actualizarVotosProfesor()">↻ Ahora</button>
+                    </div>
+                </div>
+                <button class="btn-generar" onclick="generarGrupos()">🔀 Generar grupos</button>
+                <div id="profesorStatus" class="upload-status" style="display:none"></div>
+            </div>
+
+            <!-- Resultado grupos -->
+            <div class="profesor-seccion" id="seccionGrupos" style="display:none">
+                <label class="profesor-label">Grupos generados</label>
+                <div id="resultadoProfesor"></div>
+            </div>
+
+            <!-- Acciones -->
+            <div class="profesor-seccion">
+                <label class="profesor-label">Acciones</label>
+                <button class="btn-danger" onclick="resetearVotos()">🗑️ Borrar todos los votos</button>
             </div>
 
         </div>
-        <div class="version-badge">v1.6</div>
+        <div class="version-badge">v2.0</div>
     </div>
 
     <script src="main.js"></script>
