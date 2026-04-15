@@ -20,7 +20,9 @@ body {
     letter-spacing: 0.5px; pointer-events: none; user-select: none;
 }
 
-/* ── Login ───────────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════════ */
 .login-box {
     background: white; border-radius: 20px; padding: 48px 40px;
     max-width: 420px; width: 100%; text-align: center;
@@ -39,9 +41,83 @@ body {
 }
 .btn-google:hover { border-color: #4285F4; box-shadow: 0 4px 16px rgba(66,133,244,0.2); transform: translateY(-1px); }
 
+.login-sep {
+    display: flex; align-items: center; gap: 12px;
+    margin: 24px 0 16px; color: #ccc; font-size: 13px;
+}
+.login-sep::before, .login-sep::after {
+    content: ''; flex: 1; height: 1px; background: #eee;
+}
+
+.btn-profesor-acceso {
+    width: 100%; padding: 11px 20px;
+    background: #fffbeb; color: #92400e;
+    border: 2px solid #fde68a; border-radius: 8px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-profesor-acceso:hover { background: #fef3c7; border-color: #f59e0b; }
+
 .error-login { color: #e74c3c; font-size: 14px; margin-top: 14px; text-align: center; display: none; }
 
-/* ── App container ───────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   PANTALLA PROFESOR SETUP
+══════════════════════════════════════════════════ */
+.profesor-setup-box {
+    background: white; border-radius: 20px; padding: 48px 40px;
+    max-width: 480px; width: 100%; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3); margin-top: 60px;
+    position: relative;
+}
+.profesor-setup-box h1 { font-size: 24px; color: #92400e; margin-bottom: 8px; }
+
+.btn-volver {
+    position: absolute; top: 20px; left: 20px;
+    background: none; border: none; color: #999; font-size: 14px;
+    cursor: pointer; padding: 4px 8px; border-radius: 6px;
+    transition: all 0.2s; flex: none;
+}
+.btn-volver:hover { background: #f5f5f5; color: #555; }
+
+.paso-setup { margin-top: 24px; }
+.setup-desc { color: #777; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+
+.input-setup {
+    width: 100%; padding: 12px 16px;
+    border: 2px solid #e0e0e0; border-radius: 10px;
+    font-size: 16px; color: #333; background: #fafafa;
+    letter-spacing: 2px; text-align: center;
+    transition: border-color 0.2s;
+}
+.input-setup:focus { outline: none; border-color: #f59e0b; background: white; }
+.input-setup::placeholder { letter-spacing: normal; color: #bbb; }
+
+.input-clase { letter-spacing: 3px; font-weight: 700; text-transform: uppercase; }
+
+.btn-setup-primary {
+    margin-top: 14px; width: 100%; padding: 13px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white; border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; box-shadow: 0 4px 14px rgba(245,158,11,0.35);
+}
+.btn-setup-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(245,158,11,0.4); }
+
+.error-setup { color: #dc2626; font-size: 13px; margin-top: 10px; }
+
+.clase-hint {
+    margin-top: 18px; font-size: 12px; color: #999;
+    background: #fafafa; border-radius: 8px; padding: 10px 14px;
+    border: 1px solid #f0f0f0;
+}
+.clase-url-preview {
+    display: block; margin-top: 4px; font-size: 13px;
+    color: #667eea; font-weight: 600; word-break: break-all;
+}
+
+/* ══════════════════════════════════════════════════
+   APP CONTAINER
+══════════════════════════════════════════════════ */
 .container {
     background: white; border-radius: 15px; padding: 30px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
@@ -55,26 +131,34 @@ h1 { text-align: center; color: #333; font-size: 26px; }
 .user-header {
     display: flex; align-items: center; justify-content: space-between;
     background: #f4f5ff; border-radius: 10px; padding: 12px 16px;
-    border: 1px solid #e0e2f5;
+    border: 1px solid #e0e2f5; gap: 12px; flex-wrap: wrap;
 }
-.user-info { display: flex; align-items: center; gap: 12px; }
-.user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.user-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .user-avatar-fallback {
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white; font-size: 18px; font-weight: bold;
     display: flex; align-items: center; justify-content: center;
 }
-.user-name  { font-weight: 700; color: #333; font-size: 15px; }
-.user-email { color: #888; font-size: 12px; }
+.user-name  { font-weight: 700; color: #333; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-email { color: #888; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.clase-badge {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white; font-size: 12px; font-weight: 700;
+    padding: 4px 12px; border-radius: 20px; white-space: nowrap;
+}
+
 .btn-logout {
     background: none; border: 1px solid #ccc; color: #666;
     padding: 6px 14px; border-radius: 6px; font-size: 13px;
-    cursor: pointer; transition: all 0.2s; flex: 0;
+    cursor: pointer; transition: all 0.2s; flex: 0; white-space: nowrap;
 }
 .btn-logout:hover { background: #fee; border-color: #e57; color: #c33; }
 
-/* ── Secciones ───────────────────────────────────── */
+/* ── Secciones alumno ────────────────────────────── */
 #vistaAlumno { display: flex; flex-direction: column; gap: 20px; }
 .section-card { border: 2px solid #e8e8f0; border-radius: 12px; padding: 20px; background: #fafafa; }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -88,19 +172,18 @@ h1 { text-align: center; color: #333; font-size: 26px; }
 }
 
 /* ── Formulario alumno ───────────────────────────── */
-.form-group { margin-bottom: 14px; }
-label { display: block; margin-bottom: 6px; color: #555; font-weight: 600; font-size: 14px; }
+.form-group { margin-bottom: 20px; }
+label { display: block; margin-bottom: 8px; color: #555; font-weight: 600; }
 select {
-    width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0;
-    border-radius: 8px; font-size: 15px; background: white; transition: border-color 0.2s;
+    width: 100%; padding: 12px; border: 2px solid #e0e0e0;
+    border-radius: 8px; font-size: 16px; background: white;
 }
 select:focus { outline: none; border-color: #667eea; }
-select option:disabled { color: #bbb; }
 
-.button-group { display: flex; gap: 10px; margin-top: 6px; margin-bottom: 0; }
+.button-group { display: flex; gap: 10px; margin-bottom: 20px; }
 button {
     flex: 1; padding: 12px; border: none; border-radius: 8px;
-    font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s;
+    font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;
 }
 .btn-emparejar {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
@@ -149,29 +232,51 @@ button {
 }
 .editar-lista:focus { outline: none; border-color: #667eea; }
 
-/* ══ PANEL PROFESOR ══════════════════════════════════════════════ */
-.panel-profesor {
-    border: 2px solid #f59e0b; border-radius: 12px;
-    background: #fffbeb; overflow: hidden;
-}
-.profesor-header {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    color: white; padding: 14px 20px;
+/* ══════════════════════════════════════════════════
+   PANEL PROFESOR ACTIVO (pantalla completa)
+══════════════════════════════════════════════════ */
+.profesor-header-bar {
     display: flex; align-items: center; justify-content: space-between;
-    font-weight: 700; font-size: 16px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-radius: 12px; padding: 16px 20px; flex-wrap: wrap; gap: 10px;
 }
+.clase-badge-prof {
+    font-size: 13px; color: rgba(255,255,255,0.85);
+    font-weight: 600; margin-top: 2px;
+}
+
+.enlace-clase-box {
+    background: #fffbeb; border: 2px solid #fde68a;
+    border-radius: 10px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.enlace-label { font-size: 13px; color: #92400e; font-weight: 700; white-space: nowrap; }
+.enlace-url {
+    font-size: 14px; color: #667eea; font-weight: 600;
+    word-break: break-all; flex: 1;
+}
+
+.btn-copiar-enlace {
+    background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.4);
+    padding: 7px 14px; border-radius: 7px; font-size: 13px;
+    cursor: pointer; font-weight: 600; flex: 0; transition: background 0.2s;
+    white-space: nowrap;
+}
+.btn-copiar-enlace:hover { background: rgba(255,255,255,0.4); }
+
 .btn-cerrar-profesor {
     background: rgba(255,255,255,0.2); color: white; border: none;
-    padding: 6px 14px; border-radius: 6px; font-size: 13px;
+    padding: 7px 14px; border-radius: 7px; font-size: 13px;
     cursor: pointer; font-weight: 600; flex: 0; transition: background 0.2s;
+    white-space: nowrap;
 }
 .btn-cerrar-profesor:hover { background: rgba(255,255,255,0.35); }
 
-.profesor-seccion { padding: 18px 20px; border-bottom: 1px solid #fde68a; }
+.profesor-seccion { padding: 18px 0; border-bottom: 1px solid #f0e8d0; }
 .profesor-seccion:last-child { border-bottom: none; }
 .profesor-label { display: block; font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 12px; }
 
-/* Tamaño / maxVotos control */
+/* Tamaño control */
 .tamaño-control { display: flex; align-items: center; gap: 16px; }
 .btn-tamaño {
     width: 40px; height: 40px; background: #f59e0b; color: white;
@@ -181,7 +286,6 @@ button {
 }
 .btn-tamaño:hover { background: #d97706; }
 .tamaño-valor { font-size: 36px; font-weight: 900; color: #92400e; min-width: 60px; text-align: center; }
-.tamaño-nota  { font-size: 12px; color: #b45309; margin-top: 8px; }
 
 /* ── Votos en tiempo real ────────────────────────── */
 .votos-live {
@@ -189,21 +293,21 @@ button {
     border-radius: 10px; padding: 16px; margin-bottom: 16px;
 }
 .votos-contador { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-.votos-num { font-size: 42px; font-weight: 900; color: #d97706; line-height: 1; }
-.votos-de  { font-size: 15px; color: #92400e; font-weight: 600; }
+.votos-num  { font-size: 42px; font-weight: 900; color: #d97706; line-height: 1; }
+.votos-de   { font-size: 15px; color: #92400e; font-weight: 600; }
 
-.votos-barra-wrap {
-    background: #fde68a; border-radius: 20px; height: 8px; margin-bottom: 12px; overflow: hidden;
-}
+.votos-barra-wrap { background: #fde68a; border-radius: 20px; height: 8px; margin-bottom: 12px; overflow: hidden; }
 .votos-barra {
     background: linear-gradient(90deg, #f59e0b, #d97706);
     height: 100%; border-radius: 20px; transition: width 0.5s ease;
 }
+
 .votos-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; }
 .voto-chip {
     background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
     padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
 }
+
 .votos-refresh { font-size: 12px; color: #b45309; display: flex; align-items: center; gap: 8px; }
 .btn-refresh {
     background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
@@ -212,9 +316,9 @@ button {
 }
 .btn-refresh:hover { background: #fde68a; }
 
-/* ── Botón generar ───────────────────────────────── */
+/* ── Botón generar grupos ────────────────────────── */
 .btn-generar {
-    width: 100%; padding: 14px;
+    width: 100%; padding: 14px; margin-top: 0;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white; border: none; border-radius: 10px;
     font-size: 17px; font-weight: 700; cursor: pointer;
@@ -222,7 +326,7 @@ button {
 }
 .btn-generar:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
 
-/* ── Grupos (profesor) ───────────────────────────── */
+/* ── Grupos generados ────────────────────────────── */
 .grupos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
 .stat  { background: #fff; border: 2px solid #fde68a; padding: 12px; border-radius: 8px; text-align: center; }
@@ -249,7 +353,7 @@ button {
 }
 @keyframes chipSlide { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
 
-/* ── Peligroso ───────────────────────────────────── */
+/* ── Botón peligroso ─────────────────────────────── */
 .btn-danger {
     background: #fee2e2; color: #b91c1c; border: 2px solid #fca5a5;
     padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
@@ -257,22 +361,11 @@ button {
 }
 .btn-danger:hover { background: #fca5a5; border-color: #ef4444; }
 
-/* ══ ZONA ACCESO PROFESOR ════════════════════════════════════════ */
-.zona-profesor { border-top: 1px dashed #e0e0e0; padding-top: 16px; }
-.acceso-profesor {
-    display: flex; align-items: center; gap: 10px;
-    justify-content: center; flex-wrap: wrap;
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 480px) {
+    body { padding: 12px; }
+    .login-box, .profesor-setup-box { padding: 32px 24px; margin-top: 30px; }
+    .container { padding: 20px 16px; }
+    .user-header { flex-direction: column; align-items: flex-start; }
+    .header-right { width: 100%; justify-content: space-between; }
 }
-.input-codigo {
-    padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px;
-    font-size: 14px; color: #666; width: 200px; background: #fafafa; letter-spacing: 2px;
-}
-.input-codigo:focus { outline: none; border-color: #f59e0b; }
-.input-codigo::placeholder { letter-spacing: normal; }
-.btn-validar {
-    background: #f0f0f0; color: #555; border: 1px solid #ddd;
-    padding: 8px 18px; border-radius: 8px; font-size: 14px;
-    font-weight: 600; cursor: pointer; flex: 0; transition: all 0.2s;
-}
-.btn-validar:hover { background: #e8e8e8; }
-.error-codigo { color: #dc2626; font-size: 13px; width: 100%; text-align: center; }
