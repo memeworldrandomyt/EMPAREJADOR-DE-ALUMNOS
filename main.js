@@ -5,14 +5,13 @@ const CONFIG = {
     clientId:      '490204576711-mjpqqt3pjsh5nf9udo4272719eedhjvb.apps.googleusercontent.com',
     apiKey:        'AIzaSyDDg3DGAtuEqaDusmJxlmjmLfy40og0ccQ',
     spreadsheetId: '1JAFWVUenNEDssEPo9mb4Ni4YzKcZlAAf4dxEDDNSnA8',
-    sheetVotos:    'Votos',
-    sheetConfig:   'Config',
 };
 
 const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const CODIGO_PROF   = 'PR0F3SOR';
 const POLL_INTERVAL = 10000;
+const BASE_URL      = 'https://agrupador-de-alumnos.vercel.app/';
 
 // ── Estado ────────────────────────────────────────────────────────
 let tokenClient   = null;
@@ -20,14 +19,25 @@ let accessToken   = null;
 let usuarioActual = null;
 let alumnos       = [];
 let tamañoGrupo   = 30;
-let maxVotos      = 1;   // preferencias por alumno
 let modoProfesor  = false;
+let codigoClase   = null;   // código de clase activo (alumnos y profesor)
 let pollTimer     = null;
+let profValidado  = false;  // profesor pasó el paso 1 (código PR0F3SOR)
+
+// ══════════════════════════════════════════════════════════════════
+//  HELPERS DE NOMBRE DE HOJA (por clase)
+// ══════════════════════════════════════════════════════════════════
+function sheetConfig() { return `Config_${codigoClase}`; }
+function sheetVotos()  { return `Votos_${codigoClase}`;  }
 
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ══════════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
+    // Leer código de clase de la URL (ej: /1BACH-A o ?clase=1BACH-A)
+    const pathCode = leerCodigoDeURL();
+    if (pathCode) codigoClase = pathCode;
+
     gapi.load('client', async () => {
         await gapi.client.init({
             apiKey:        CONFIG.apiKey,
@@ -45,10 +55,120 @@ window.addEventListener('load', () => {
             await cargarPerfilUsuario();
         },
     });
+
+    // Actualizar preview URL en pantalla profesor
+    const inputClase = document.getElementById('inputCodigoClase');
+    if (inputClase) {
+        inputClase.addEventListener('input', () => {
+            const v = inputClase.value || 'CODIGO';
+            document.getElementById('urlPreview').textContent = BASE_URL + v;
+        });
+    }
 });
 
+// Lee el código de clase desde window.location
+// Soporta: /codigoclase  y  ?clase=codigoclase
+function leerCodigoDeURL() {
+    const path = window.location.pathname.replace(/^\//, '').trim();
+    if (path && /^[A-Z0-9\-]+$/i.test(path)) return path.toUpperCase();
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('clase');
+    if (q && /^[A-Z0-9\-]+$/i.test(q)) return q.toUpperCase();
+    return null;
+}
+
 // ══════════════════════════════════════════════════════════════════
-//  AUTH
+//  FLUJO PROFESOR (sin login)
+// ══════════════════════════════════════════════════════════════════
+function mostrarPantallaProfesor() {
+    mostrarPantalla('pantallaProfesor');
+    setTimeout(() => document.getElementById('inputCodigoProf').focus(), 100);
+}
+
+function volverAlLogin() {
+    profValidado = false;
+    document.getElementById('pasoCodigoProf').style.display   = '';
+    document.getElementById('pasoCodigoClase').style.display  = 'none';
+    document.getElementById('inputCodigoProf').value = '';
+    document.getElementById('errorCodigoProf').style.display  = 'none';
+    mostrarPantalla('pantallaLogin');
+}
+
+function validarCodigoProf() {
+    const input = document.getElementById('inputCodigoProf');
+    const error = document.getElementById('errorCodigoProf');
+    if (input.value === CODIGO_PROF) {
+        profValidado = true;
+        input.value  = '';
+        error.style.display = 'none';
+        document.getElementById('pasoCodigoProf').style.display  = 'none';
+        document.getElementById('pasoCodigoClase').style.display = '';
+        setTimeout(() => document.getElementById('inputCodigoClase').focus(), 100);
+    } else {
+        error.style.display = 'block';
+        input.value = '';
+        input.focus();
+        setTimeout(() => { error.style.display = 'none'; }, 2000);
+    }
+}
+
+async function validarCodigoClase() {
+    const input = document.getElementById('inputCodigoClase');
+    const error = document.getElementById('errorCodigoClase');
+    const codigo = input.value.trim().toUpperCase();
+    if (!codigo || !/^[A-Z0-9\-]+$/.test(codigo)) {
+        error.style.display = 'block';
+        setTimeout(() => { error.style.display = 'none'; }, 2500);
+        return;
+    }
+    codigoClase  = codigo;
+    modoProfesor = true;
+    input.value  = '';
+    error.style.display = 'none';
+    await abrirPanelProfesor();
+}
+
+async function abrirPanelProfesor() {
+    // Mostrar pantalla profesor activo
+    mostrarPantalla('pantallaProfesorActivo');
+    document.getElementById('claseBadgeProf').textContent = '🏫 Clase: ' + codigoClase;
+    document.getElementById('enlaceClaseUrl').textContent = BASE_URL + codigoClase;
+    document.getElementById('tamañoValor').textContent    = tamañoGrupo;
+
+    // Cargar config existente de esta clase (si la hay)
+    await cargarConfigDesdeSheets();
+
+    // Votos en tiempo real
+    await actualizarVotosProfesor();
+    arrancarPoll();
+}
+
+function cerrarPanelProfesor() {
+    modoProfesor = false;
+    profValidado = false;
+    codigoClase  = leerCodigoDeURL(); // restaurar si había URL
+    detenerPoll();
+    // Resetear estado de setup
+    document.getElementById('pasoCodigoProf').style.display  = '';
+    document.getElementById('pasoCodigoClase').style.display = 'none';
+    document.getElementById('inputCodigoClase').value = '';
+    mostrarPantalla('pantallaLogin');
+}
+
+function copiarEnlaceClase() {
+    const url = BASE_URL + codigoClase;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector('.btn-copiar-enlace');
+        const orig = btn.textContent;
+        btn.textContent = '✅ ¡Copiado!';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+    }).catch(() => {
+        prompt('Copia este enlace:', url);
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  AUTH (alumno)
 // ══════════════════════════════════════════════════════════════════
 function iniciarSesion() {
     mostrarLoginError('');
@@ -59,8 +179,9 @@ function cerrarSesion() {
     detenerPoll();
     if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = null; usuarioActual = null; modoProfesor = false;
-    document.getElementById('pantallaApp').style.display   = 'none';
-    document.getElementById('pantallaLogin').style.display = '';
+    alumnos = []; tamañoGrupo = 30;
+    codigoClase = leerCodigoDeURL();
+    mostrarPantalla('pantallaLogin');
 }
 
 async function cargarPerfilUsuario() {
@@ -90,14 +211,37 @@ async function cargarPerfilUsuario() {
             avatarFallback.textContent   = usuarioActual.nombre[0].toUpperCase();
         }
 
-        document.getElementById('pantallaLogin').style.display = 'none';
-        document.getElementById('pantallaApp').style.display   = '';
-
-        await cargarConfigDesdeSheets();
+        // Si ya tenemos código de clase (por URL), ir directo a la app
+        if (codigoClase) {
+            await entrarEnClaseComoAlumno();
+        } else {
+            // Pedir código de clase
+            mostrarPantalla('pantallaCodigoClase');
+            setTimeout(() => document.getElementById('inputCodigoAlumno').focus(), 100);
+        }
 
     } catch (err) {
         mostrarLoginError('No se pudo obtener el perfil: ' + err.message);
     }
+}
+
+async function unirseAClase() {
+    const input = document.getElementById('inputCodigoAlumno');
+    const error = document.getElementById('errorCodigoAlumno');
+    const codigo = input.value.trim().toUpperCase();
+    if (!codigo || !/^[A-Z0-9\-]+$/.test(codigo)) {
+        error.style.display = 'block';
+        setTimeout(() => { error.style.display = 'none'; }, 2500);
+        return;
+    }
+    codigoClase = codigo;
+    await entrarEnClaseComoAlumno();
+}
+
+async function entrarEnClaseComoAlumno() {
+    document.getElementById('claseBadge').textContent = '🏫 ' + codigoClase;
+    mostrarPantalla('pantallaApp');
+    await cargarConfigDesdeSheets();
 }
 
 function mostrarLoginError(msg) {
@@ -107,50 +251,14 @@ function mostrarLoginError(msg) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  MODO PROFESOR
+//  CAMBIO DE PANTALLA
 // ══════════════════════════════════════════════════════════════════
-function validarProfesor() {
-    const input = document.getElementById('codigoProfesor');
-    const error = document.getElementById('errorCodigo');
-
-    if (input.value === CODIGO_PROF) {
-        modoProfesor = true;
-        input.value  = '';
-        error.style.display = 'none';
-        document.getElementById('panelProfesor').style.display  = '';
-        document.getElementById('accesoProfesor').style.display = 'none';
-        document.getElementById('tamañoValor').textContent      = tamañoGrupo;
-        document.getElementById('maxVotosValor').textContent    = maxVotos;
-        actualizarVotosProfesor();
-        arrancarPoll();
-    } else {
-        error.style.display = 'block';
-        input.value = '';
-        input.focus();
-        setTimeout(() => { error.style.display = 'none'; }, 2000);
-    }
-}
-
-function cerrarModoProfesor() {
-    modoProfesor = false;
-    detenerPoll();
-    document.getElementById('panelProfesor').style.display  = 'none';
-    document.getElementById('accesoProfesor').style.display = '';
-    document.getElementById('codigoProfesor').value         = '';
-}
-
-function cambiarTamaño(delta) {
-    tamañoGrupo = Math.max(2, Math.min(100, tamañoGrupo + delta));
-    document.getElementById('tamañoValor').textContent     = tamañoGrupo;
-    document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
-}
-
-function cambiarMaxVotos(delta) {
-    maxVotos = Math.max(1, Math.min(10, maxVotos + delta));
-    document.getElementById('maxVotosValor').textContent = maxVotos;
-    document.getElementById('maxVotosInfo').textContent  = maxVotos;
-    // Regenerar los selects del alumno con el nuevo número
-    renderizarSelectsAlumno();
+function mostrarPantalla(id) {
+    ['pantallaLogin','pantallaProfesor','pantallaCodigoClase','pantallaApp','pantallaProfesorActivo']
+        .forEach(p => {
+            const el = document.getElementById(p);
+            if (el) el.style.display = (p === id) ? '' : 'none';
+        });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -166,131 +274,153 @@ function detenerPoll() {
 }
 
 async function actualizarVotosProfesor() {
-    if (!modoProfesor) return;
+    if (!modoProfesor || !codigoClase) return;
     try {
         const votos    = await leerVotos();
         const nVotos   = Object.keys(votos).length;
         const nAlumnos = alumnos.length;
 
-        document.getElementById('votosNum').textContent = nVotos;
-        document.getElementById('votosDe').textContent  = `/ ${nAlumnos} alumnos`;
+        document.getElementById('votosNum').textContent  = nVotos;
+        document.getElementById('votosDe').textContent   = `/ ${nAlumnos} alumnos`;
 
         const pct = nAlumnos > 0 ? Math.round((nVotos / nAlumnos) * 100) : 0;
         document.getElementById('votosBarra').style.width = pct + '%';
 
-        document.getElementById('votosLista').innerHTML = Object.entries(votos).map(([nombre, v]) => {
-            const prefs = v.preferencias?.filter(Boolean) || (v.preferencia ? [v.preferencia] : []);
-            const prefStr = prefs.length ? prefs.join(', ') : 'sin pref.';
-            return `<span class="voto-chip">${nombre} → ${prefStr}</span>`;
-        }).join('');
+        const lista = document.getElementById('votosLista');
+        lista.innerHTML = Object.entries(votos).map(([nombre, v]) =>
+            `<span class="voto-chip">${nombre}${v.preferencia ? ` → ${v.preferencia}` : ' (sin pref.)'}</span>`
+        ).join('');
     } catch { /* silencioso */ }
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS — Config
-//  Estructura:
-//    __TAMAÑO__    | valor
-//    __MAX_VOTOS__ | valor
-//    nombre alumno | (vacío)
-//    ...
-//    __GRUPO_X__   | alumno1,alumno2,…
+//  TAMAÑO DE GRUPO
+// ══════════════════════════════════════════════════════════════════
+function cambiarTamaño(delta) {
+    tamañoGrupo = Math.max(2, Math.min(100, tamañoGrupo + delta));
+    document.getElementById('tamañoValor').textContent     = tamañoGrupo;
+    document.getElementById('tamañoGrupoInfo') && (document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — Config por clase
+//  Hoja: Config_CODIGO
+//    Fila 1:  __TAMAÑO__ | valor
+//    Filas 2…N: nombre alumno
+//    Filas N+1…: __GRUPO_X__ | alumno1,alumno2,…
 // ══════════════════════════════════════════════════════════════════
 async function cargarConfigDesdeSheets() {
+    if (!codigoClase) return;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetConfig}!A1:B`,
+            range:         `${sheetConfig()}!A1:B`,
         });
         const filas = res.result.values || [];
 
-        let nuevoTamaño    = 30;
-        let nuevoMaxVotos  = 1;
-        let nuevosAlumnos  = [];
+        let nuevoTamaño   = 30;
+        let nuevosAlumnos = [];
 
         filas.forEach(fila => {
             if (!fila[0]) return;
             const clave = fila[0].trim();
-            if (clave === '__TAMAÑO__')    { nuevoTamaño   = parseInt(fila[1]) || 30; }
-            else if (clave === '__MAX_VOTOS__') { nuevoMaxVotos = parseInt(fila[1]) || 1; }
-            else if (!clave.startsWith('__'))  { nuevosAlumnos.push(clave); }
+            if (clave === '__TAMAÑO__' && fila[1]) {
+                nuevoTamaño = parseInt(fila[1]) || 30;
+            } else if (!clave.startsWith('__')) {
+                nuevosAlumnos.push(clave);
+            }
         });
 
         tamañoGrupo = nuevoTamaño;
-        maxVotos    = nuevoMaxVotos;
         alumnos     = nuevosAlumnos;
 
-        document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
-        document.getElementById('maxVotosInfo').textContent    = maxVotos;
-        document.getElementById('tamañoValor').textContent     = tamañoGrupo;
-        document.getElementById('maxVotosValor').textContent   = maxVotos;
+        const infoEl = document.getElementById('tamañoGrupoInfo');
+        const valorEl = document.getElementById('tamañoValor');
+        if (infoEl)  infoEl.textContent  = tamañoGrupo;
+        if (valorEl) valorEl.textContent = tamañoGrupo;
 
         actualizarListaActiva();
-        renderizarSelectsAlumno();
+        inicializarSelect();
+        actualizarListaPublicadaProf();
 
     } catch (err) {
-        console.warn('Config no encontrada:', err.message);
-        renderizarSelectsAlumno(); // render con defaults
+        // Hoja no existe aún — normal para clase nueva
+        console.warn('Config no encontrada (clase nueva):', err.message);
     }
 }
 
 async function guardarConfigEnSheets(grupos) {
+    if (!codigoClase) throw new Error('No hay clase activa');
     const valores = [
-        ['__TAMAÑO__',    tamañoGrupo],
-        ['__MAX_VOTOS__', maxVotos],
+        ['__TAMAÑO__', tamañoGrupo],
         ...alumnos.map(n => [n]),
     ];
-
     if (grupos && grupos.length > 0) {
         grupos.forEach((g, i) => {
             valores.push([`__GRUPO_${i + 1}__`, g.join(',')]);
         });
     }
 
+    // Asegurar que la hoja existe
+    await asegurarHoja(sheetConfig());
+
     const resClear = await gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: CONFIG.spreadsheetId,
-        range:         `${CONFIG.sheetConfig}!A:B`,
+        range:         `${sheetConfig()}!A:B`,
     });
     if (resClear.status !== 200) {
-        throw new Error(`Error al limpiar Config (${resClear.status}). ¿Existe la pestaña "Config"?`);
+        throw new Error(`Error al limpiar Config (${resClear.status})`);
     }
 
     const resUpdate = await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:    CONFIG.spreadsheetId,
-        range:            `${CONFIG.sheetConfig}!A1`,
+        range:            `${sheetConfig()}!A1`,
         valueInputOption: 'RAW',
         resource:         { values: valores },
     });
     if (resUpdate.status !== 200) {
-        throw new Error(`Error al escribir en Config (${resUpdate.status}).`);
+        throw new Error(`Error al escribir en Config (${resUpdate.status})`);
+    }
+}
+
+// Crea una hoja si no existe
+async function asegurarHoja(nombre) {
+    try {
+        // Intentar leer — si no da error, ya existe
+        await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: CONFIG.spreadsheetId,
+            range:         `${nombre}!A1`,
+        });
+    } catch (err) {
+        if (err.status === 400 || err.status === 404) {
+            // Crear la hoja
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: CONFIG.spreadsheetId,
+                resource: {
+                    requests: [{
+                        addSheet: { properties: { title: nombre } }
+                    }]
+                }
+            });
+        }
     }
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS — Votos
-//  Columnas: A=email, B=nombre, C=pref1, D=pref2, …, última=timestamp
+//  GOOGLE SHEETS — Votos por clase
 // ══════════════════════════════════════════════════════════════════
 async function leerVotos() {
+    if (!codigoClase) return {};
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A2:Z`,
+            range:         `${sheetVotos()}!A2:D`,
         });
         const filas = res.result.values || [];
         const votos = {};
         filas.forEach(fila => {
-            const email  = fila[0];
-            const nombre = fila[1];
-            if (!nombre) return;
-            // Columnas C en adelante son preferencias, la última es timestamp
-            // Detectamos timestamp por el formato ISO (contiene 'T' y 'Z')
-            const resto = fila.slice(2);
-            const tsIdx = resto.findLastIndex(v => v && v.includes('T') && v.includes('-'));
-            const prefs = tsIdx >= 0 ? resto.slice(0, tsIdx) : resto;
-            votos[nombre] = {
-                email,
-                preferencias: prefs.filter(Boolean),
-                preferencia:  prefs[0] || null, // compatibilidad
-            };
+            const [email, nombre, preferencia] = fila;
+            if (nombre) votos[nombre] = { email, preferencia: preferencia || null };
         });
         return votos;
     } catch (err) {
@@ -299,16 +429,15 @@ async function leerVotos() {
     }
 }
 
-async function escribirVoto(nombre, email, preferencias) {
-    // preferencias: array de strings (puede tener vacíos, los filtramos)
-    const prefsLimpias = preferencias.filter(Boolean);
+async function escribirVoto(nombre, email, preferencia) {
+    if (!codigoClase) throw new Error('No hay clase activa');
+    await asegurarHoja(sheetVotos());
 
-    // Buscar fila existente
     let filaExistente = null;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A2:B`,
+            range:         `${sheetVotos()}!A2:B`,
         });
         const filas = res.result.values || [];
         filas.forEach((fila, i) => {
@@ -316,29 +445,23 @@ async function escribirVoto(nombre, email, preferencias) {
         });
     } catch { /* vacía */ }
 
-    // Fila: email, nombre, pref1, pref2, …, timestamp
-    const fila = [email, nombre, ...prefsLimpias, new Date().toISOString()];
+    const valores = [[email, nombre, preferencia || '', new Date().toISOString()]];
 
     if (filaExistente) {
-        // Primero limpiar la fila entera para no dejar columnas viejas
-        await gapi.client.sheets.spreadsheets.values.clear({
-            spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A${filaExistente}:Z${filaExistente}`,
-        });
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId:    CONFIG.spreadsheetId,
-            range:            `${CONFIG.sheetVotos}!A${filaExistente}`,
+            range:            `${sheetVotos()}!A${filaExistente}:D${filaExistente}`,
             valueInputOption: 'RAW',
-            resource:         { values: [fila] },
+            resource:         { values: valores },
         });
     } else {
         await asegurarCabeceraVotos();
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId:    CONFIG.spreadsheetId,
-            range:            `${CONFIG.sheetVotos}!A:A`,
+            range:            `${sheetVotos()}!A:D`,
             valueInputOption: 'RAW',
             insertDataOption: 'INSERT_ROWS',
-            resource:         { values: [fila] },
+            resource:         { values: valores },
         });
     }
 }
@@ -347,17 +470,14 @@ async function asegurarCabeceraVotos() {
     try {
         const res = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A1:B1`,
+            range:         `${sheetVotos()}!A1:D1`,
         });
         if (!res.result.values?.[0]) {
-            const cabecera = ['Email', 'Nombre',
-                ...Array.from({length: 10}, (_, i) => `Preferencia ${i + 1}`),
-                'Timestamp'];
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId:    CONFIG.spreadsheetId,
-                range:            `${CONFIG.sheetVotos}!A1`,
+                range:            `${sheetVotos()}!A1:D1`,
                 valueInputOption: 'RAW',
-                resource:         { values: [cabecera] },
+                resource:         { values: [['Email','Nombre','Preferencia','Timestamp']] },
             });
         }
     } catch { /* ignorar */ }
@@ -368,11 +488,11 @@ async function resetearVotos() {
     try {
         await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: CONFIG.spreadsheetId,
-            range:         `${CONFIG.sheetVotos}!A2:Z`,
+            range:         `${sheetVotos()}!A2:D`,
         });
-        document.getElementById('seccionGrupos').style.display  = 'none';
-        document.getElementById('resultadoProfesor').innerHTML  = '';
-        document.getElementById('profesorStatus').style.display = 'none';
+        document.getElementById('seccionGrupos').style.display    = 'none';
+        document.getElementById('resultadoProfesor').innerHTML     = '';
+        document.getElementById('profesorStatus').style.display   = 'none';
         await actualizarVotosProfesor();
         alert('✅ Votos borrados correctamente.');
     } catch (err) {
@@ -382,68 +502,19 @@ async function resetearVotos() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  SELECTS DINÁMICOS (alumno)
-// ══════════════════════════════════════════════════════════════════
-function renderizarSelectsAlumno() {
-    const contenedor = document.getElementById('selectsPreferencias');
-    contenedor.innerHTML = '';
-
-    for (let i = 0; i < maxVotos; i++) {
-        const wrap = document.createElement('div');
-        wrap.className = 'form-group';
-
-        const label = document.createElement('label');
-        label.setAttribute('for', `pref_${i}`);
-        label.textContent = maxVotos === 1
-            ? '¿Con quién quieres ir? (opcional)'
-            : `${i + 1}ª preferencia${i === 0 ? ' (principal)' : ' (opcional)'}`;
-
-        const select = document.createElement('select');
-        select.id = `pref_${i}`;
-        select.innerHTML = '<option value="">-- Sin preferencia --</option>';
-
-        alumnos.forEach(a => {
-            if (a !== (usuarioActual?.nombre ?? '')) {
-                const o = document.createElement('option');
-                o.value = o.textContent = a;
-                select.appendChild(o);
-            }
-        });
-
-        // Evitar repetir la misma persona en varias preferencias
-        select.addEventListener('change', () => evitarDuplicadosEnSelects());
-
-        wrap.appendChild(label);
-        wrap.appendChild(select);
-        contenedor.appendChild(wrap);
-    }
-}
-
-function evitarDuplicadosEnSelects() {
-    const selects = Array.from(document.querySelectorAll('[id^="pref_"]'));
-    const elegidos = selects.map(s => s.value).filter(Boolean);
-
-    selects.forEach(sel => {
-        const valorActual = sel.value;
-        Array.from(sel.options).forEach(opt => {
-            if (opt.value && opt.value !== valorActual && elegidos.includes(opt.value)) {
-                opt.disabled = true;
-            } else {
-                opt.disabled = false;
-            }
-        });
-    });
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  CARGA DE DOCUMENTO (solo profesor)
 // ══════════════════════════════════════════════════════════════════
-const uploadArea = document.getElementById('uploadArea');
-uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
-uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
-uploadArea.addEventListener('drop', e => {
-    e.preventDefault(); uploadArea.classList.remove('drag-over');
-    if (e.dataTransfer.files[0]) procesarArchivo(e.dataTransfer.files[0]);
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        const uploadArea = document.getElementById('uploadArea');
+        if (!uploadArea) return;
+        uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+        uploadArea.addEventListener('drop', e => {
+            e.preventDefault(); uploadArea.classList.remove('drag-over');
+            if (e.dataTransfer.files[0]) procesarArchivo(e.dataTransfer.files[0]);
+        });
+    }, 500);
 });
 
 function cargarArchivo(e) {
@@ -456,14 +527,19 @@ async function procesarArchivo(file) {
     preview.style.display = 'none';
     status.style.display  = 'block';
     status.className      = 'upload-status loading';
-    status.innerHTML      = '⏳ Leyendo archivo…';
+    status.innerHTML      = '⏳ Analizando documento con IA…';
 
     try {
-        const ext = file.name.split('.').pop().toLowerCase();
-        if (ext !== 'txt') throw new Error('Solo se admiten archivos .txt — un nombre por línea.');
-
-        const nombres = await extraerDesdeTxt(file);
-        if (!nombres.length) throw new Error('No se encontraron nombres en el archivo.');
+        const ext   = file.name.split('.').pop().toLowerCase();
+        let nombres = [];
+        if (ext === 'txt') {
+            nombres = await extraerDesdeTxt(file);
+        } else if (['pdf','docx','jpg','jpeg','png','webp'].includes(ext)) {
+            nombres = await extraerConClaude(file, ext);
+        } else {
+            throw new Error('Formato no soportado. Usa PDF, TXT, DOCX o imagen.');
+        }
+        if (!nombres.length) throw new Error('No se encontraron nombres en el documento.');
         nombres.sort((a, b) => a.localeCompare(b, 'es'));
         mostrarPreview(nombres);
         status.className = 'upload-status success';
@@ -481,6 +557,52 @@ function extraerDesdeTxt(file) {
         r.onload  = e => resolve(e.target.result.split('\n').map(l => l.trim()).filter(l => l.length > 1));
         r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
         r.readAsText(file);
+    });
+}
+
+async function extraerConClaude(file, ext) {
+    const base64 = await fileToBase64(file);
+    const isImg  = ['jpg','jpeg','png','webp'].includes(ext);
+    const mime   = isImg
+        ? (ext === 'jpg' ? 'image/jpeg' : `image/${ext}`)
+        : (ext === 'pdf' ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const contentBlock = isImg
+        ? { type: 'image',    source: { type: 'base64', media_type: mime, data: base64 } }
+        : { type: 'document', source: { type: 'base64', media_type: mime, data: base64 } };
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model:      'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            system: `Eres un extractor de nombres de personas.
+Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks.
+Ejemplo: ["Ana García","Pedro López"]
+Si no hay nombres: []`,
+            messages: [{ role: 'user', content: [
+                contentBlock,
+                { type: 'text', text: 'Extrae todos los nombres de personas de este documento.' }
+            ]}],
+        })
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Error con la IA.'); }
+    const data  = await res.json();
+    const texto = data.content.map(b => b.text || '').join('').trim();
+    try {
+        const parsed = JSON.parse(texto);
+        if (!Array.isArray(parsed)) throw 0;
+        return parsed.filter(n => typeof n === 'string' && n.trim());
+    } catch { throw new Error('La IA no devolvió una lista válida.'); }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload  = e => resolve(e.target.result.split(',')[1]);
+        r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+        r.readAsDataURL(file);
     });
 }
 
@@ -505,11 +627,10 @@ async function usarAlumnos() {
 
     try {
         await guardarConfigEnSheets(null);
-        actualizarListaActiva();
-        renderizarSelectsAlumno();
+        actualizarListaPublicadaProf();
         document.getElementById('listaPreview').style.display = 'none';
         status.className = 'upload-status success';
-        status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong> · <strong>${maxVotos}</strong> voto(s) por alumno.`;
+        status.innerHTML = `✅ Lista publicada: <strong>${alumnos.length}</strong> alumnos · Grupos de <strong>${tamañoGrupo}</strong>.`;
         await actualizarVotosProfesor();
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
@@ -520,35 +641,59 @@ async function usarAlumnos() {
 
 function actualizarListaActiva() {
     const div = document.getElementById('listaActiva');
+    if (!div) return;
     div.innerHTML = alumnos.length
         ? alumnos.map(n => `<span class="chip-activo">${n}</span>`).join('')
         : '<span class="chip-inactive">El profesor aún no ha cargado la lista</span>';
-    document.getElementById('tamañoGrupoInfo').textContent = tamañoGrupo;
-    document.getElementById('maxVotosInfo').textContent    = maxVotos;
+    const infoEl = document.getElementById('tamañoGrupoInfo');
+    if (infoEl) infoEl.textContent = tamañoGrupo;
+}
+
+function actualizarListaPublicadaProf() {
+    const box = document.getElementById('listaPublicadaProf');
+    if (!box) return;
+    if (alumnos.length) {
+        box.style.display = '';
+        document.getElementById('countAlumnosPublicados').textContent = alumnos.length;
+        document.getElementById('alumnosPublicados').innerHTML =
+            alumnos.map(n => `<span class="chip-activo" style="font-size:12px;padding:4px 10px">${n}</span>`).join('');
+    } else {
+        box.style.display = 'none';
+    }
+}
+
+function inicializarSelect() {
+    const select = document.getElementById('companero');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Sin preferencia --</option>';
+    alumnos.forEach(a => {
+        if (a !== (usuarioActual?.nombre ?? '')) {
+            const o = document.createElement('option');
+            o.value = o.textContent = a;
+            select.appendChild(o);
+        }
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  ALUMNO: ENVIAR PREFERENCIAS
+//  ALUMNO: ENVIAR PREFERENCIA
 // ══════════════════════════════════════════════════════════════════
 async function enviarPreferencia() {
     if (!usuarioActual)  { alert('Inicia sesión primero.'); return; }
     if (!alumnos.length) { alert('El profesor aún no ha publicado la lista.'); return; }
 
-    // Recoger todos los selects
-    const selects     = Array.from(document.querySelectorAll('[id^="pref_"]'));
-    const preferencias = selects.map(s => s.value.trim()).filter(Boolean);
-
-    const st = document.getElementById('alumnoStatus');
+    const preferencia = document.getElementById('companero').value.trim();
+    const st          = document.getElementById('alumnoStatus');
     st.style.display = 'block';
     st.className     = 'upload-status loading';
-    st.innerHTML     = '⏳ Enviando preferencias…';
+    st.innerHTML     = '⏳ Enviando preferencia…';
 
     try {
-        await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencias);
+        await escribirVoto(usuarioActual.nombre, usuarioActual.email, preferencia);
         st.className = 'upload-status success';
-        st.innerHTML = preferencias.length
-            ? `✅ Preferencias enviadas: <strong>${preferencias.join(', ')}</strong>.`
-            : '✅ Enviado sin preferencia.';
+        st.innerHTML = preferencia
+            ? `✅ Preferencia enviada: quieres ir con <strong>${preferencia}</strong>.`
+            : '✅ Preferencia enviada: sin preferencia.';
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
         st.className = 'upload-status error';
@@ -557,8 +702,7 @@ async function enviarPreferencia() {
 }
 
 function resetearAlumno() {
-    document.querySelectorAll('[id^="pref_"]').forEach(s => { s.value = ''; });
-    evitarDuplicadosEnSelects();
+    document.getElementById('companero').value             = '';
     document.getElementById('alumnoStatus').style.display = 'none';
 }
 
@@ -576,12 +720,9 @@ async function generarGrupos() {
     try {
         const votos  = await leerVotos();
         const grupos = calcularGrupos(alumnos, votos);
-
         await guardarConfigEnSheets(grupos);
-
         st.className = 'upload-status success';
-        st.innerHTML = `✅ ${grupos.length} grupos generados y guardados.`;
-
+        st.innerHTML = `✅ ${grupos.length} grupos generados y guardados en el Sheet.`;
         mostrarResultadoProfesor(grupos, votos);
     } catch (err) {
         const msg = err?.result?.error?.message || err?.message || JSON.stringify(err);
@@ -591,32 +732,22 @@ async function generarGrupos() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  ALGORITMO DE EMPAREJAMIENTO (multi-preferencia)
-//
-//  Paso 1: para cada alumno A, recorrer sus preferencias en orden.
-//          Si B también tiene a A como alguna de sus preferencias → par mutuo.
-//  Paso 2: no emparejados → pool aleatorio → completar grupos.
+//  ALGORITMO DE EMPAREJAMIENTO
 // ══════════════════════════════════════════════════════════════════
 function calcularGrupos(listaAlumnos, votos) {
-    // Construir mapa nombre → array de preferencias
     const prefs = {};
-    listaAlumnos.forEach(a => {
-        prefs[a] = votos[a]?.preferencias?.filter(Boolean) || [];
-    });
+    listaAlumnos.forEach(a => { prefs[a] = votos[a]?.preferencia ?? null; });
 
     const asignado = new Set();
     const grupos   = [];
 
-    // Paso 1: pares mutuos (A tiene a B en sus prefs Y B tiene a A en las suyas)
+    // Paso 1: pares mutuos
     listaAlumnos.forEach(a => {
         if (asignado.has(a)) return;
-        for (const b of prefs[a]) {
-            if (!b || asignado.has(b)) continue;
-            if (prefs[b]?.includes(a)) {
-                asignado.add(a); asignado.add(b);
-                grupos.push([a, b]);
-                break;
-            }
+        const b = prefs[a];
+        if (b && prefs[b] === a && !asignado.has(b)) {
+            asignado.add(a); asignado.add(b);
+            grupos.push([a, b]);
         }
     });
 
@@ -646,10 +777,11 @@ function shuffle(arr) {
 //  MOSTRAR GRUPOS (solo profesor)
 // ══════════════════════════════════════════════════════════════════
 function mostrarResultadoProfesor(grupos, votos) {
-    document.getElementById('seccionGrupos').style.display = '';
-    const div      = document.getElementById('resultadoProfesor');
-    const nVotaron = Object.keys(votos).length;
+    const seccion = document.getElementById('seccionGrupos');
+    const div     = document.getElementById('resultadoProfesor');
+    seccion.style.display = '';
 
+    const nVotaron = Object.keys(votos).length;
     let html = `<div class="stats" style="margin-bottom:16px">
         <div class="stat"><div class="stat-label">Grupos</div><div class="stat-value">${grupos.length}</div></div>
         <div class="stat"><div class="stat-label">Máx/grupo</div><div class="stat-value">${tamañoGrupo}</div></div>
@@ -661,8 +793,7 @@ function mostrarResultadoProfesor(grupos, votos) {
         html += `<div class="grupo-card" style="animation-delay:${delay}ms">
             <div class="grupo-titulo">Grupo ${i + 1} <span class="grupo-count">(${g.length})</span></div>
             <div class="chips">${g.map((n, j) => {
-                // Mostrar 🤝 si hay mutualidad con cualquier preferencia
-                const esMutuo = prefs_mutuos(n, g, votos);
+                const esMutuo = votos[n]?.preferencia && votos[votos[n].preferencia]?.preferencia === n;
                 return `<span class="chip" style="animation-delay:${delay + j * 30}ms">${n}${esMutuo ? ' 🤝' : ''}</span>`;
             }).join('')}</div>
         </div>`;
@@ -670,9 +801,4 @@ function mostrarResultadoProfesor(grupos, votos) {
 
     html += '</div>';
     div.innerHTML = html;
-}
-
-function prefs_mutuos(nombre, grupo, votos) {
-    const misPrefs = votos[nombre]?.preferencias || [];
-    return misPrefs.some(p => p && grupo.includes(p) && (votos[p]?.preferencias || []).includes(nombre));
 }
