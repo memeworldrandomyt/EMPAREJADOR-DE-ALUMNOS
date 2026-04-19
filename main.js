@@ -49,13 +49,21 @@ function leerCodigoDeURL() {
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ══════════════════════════════════════════════════════════════════
+
+// Promise que se resuelve cuando gapi.client está listo
+let gapiReady = null;
+
 window.addEventListener('load', () => {
     codigoClase = leerCodigoDeURL();
 
-    gapi.load('client', async () => {
-        await gapi.client.init({
-            apiKey:        CONFIG.apiKey,
-            discoveryDocs: [DISCOVERY_DOC],
+    // Inicializar gapi y guardar la Promise para esperarla después
+    gapiReady = new Promise((resolve) => {
+        gapi.load('client', async () => {
+            await gapi.client.init({
+                apiKey:        CONFIG.apiKey,
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            resolve();
         });
     });
 
@@ -365,6 +373,8 @@ function cambiarMaxVotos(delta) {
 // ══════════════════════════════════════════════════════════════════
 async function cargarConfigDesdeSheets() {
     if (!codigoClase) return;
+    // Esperar a que gapi.client esté completamente inicializado
+    await gapiReady;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
@@ -408,6 +418,7 @@ async function cargarConfigDesdeSheets() {
 async function guardarConfigEnSheets(grupos) {
     if (!codigoClase)  throw new Error('No hay clase activa');
     if (!accessToken)  throw new Error('Sin sesión de Google. El profesor debe iniciar sesión.');
+    await gapiReady;
 
     const valores = [
         ['__TAMAÑO__',    tamañoGrupo],
@@ -454,6 +465,7 @@ async function asegurarHoja(nombre) {
 // ══════════════════════════════════════════════════════════════════
 async function leerVotos() {
     if (!codigoClase) return {};
+    await gapiReady;
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
@@ -477,6 +489,7 @@ async function leerVotos() {
 async function escribirVoto(nombre, email, preferencias) {
     if (!codigoClase) throw new Error('No hay clase activa');
     if (!accessToken) throw new Error('Sin sesión activa');
+    await gapiReady;
 
     const prefsLimpias = preferencias.filter(Boolean);
     await asegurarHoja(sheetVotos());
