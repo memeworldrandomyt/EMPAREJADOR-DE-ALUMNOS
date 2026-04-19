@@ -11,6 +11,7 @@ const SCOPES        = 'https://www.googleapis.com/auth/spreadsheets https://www.
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const CODIGO_PROF   = 'PR0F3SOR';
 const POLL_INTERVAL = 10000;
+const SS_KEY        = 'agrupador_clase'; // clave sessionStorage
 
 // ── Estado ────────────────────────────────────────────────────────
 let tokenClient     = null;
@@ -25,6 +26,7 @@ let codigoClase     = null;
 let pollTimer       = null;
 let profLoginDone   = false;
 let profValidado    = false;
+let gapiReady       = null; // Promise resuelta cuando gapi.client está listo
 
 // ══════════════════════════════════════════════════════════════════
 //  HELPERS DE HOJA
@@ -33,30 +35,34 @@ function sheetConfig() { return `Config_${codigoClase}`; }
 function sheetVotos()  { return `Votos_${codigoClase}`;  }
 
 // ══════════════════════════════════════════════════════════════════
-//  LEER CÓDIGO DE URL
-//  Soporta:  /CODIGO  y  ?clase=CODIGO
+//  LEER CÓDIGO DE CLASE
+//  Prioridad:
+//    1. URL path: ejemplo.com/1BACH-A
+//    2. sessionStorage (recuperar tras OAuth redirect)
+//    3. ?clase=CODIGO (fallback query param)
 // ══════════════════════════════════════════════════════════════════
 function leerCodigoDeURL() {
-    // Path: ejemplo.com/1BACH-A  →  pathname = "/1BACH-A"
     const path = window.location.pathname.replace(/^\//, '').trim();
     if (path && /^[A-Z0-9\-]+$/i.test(path)) return path.toUpperCase();
-    // Query fallback: ?clase=1BACH-A
     const q = new URLSearchParams(window.location.search).get('clase');
     if (q && /^[A-Z0-9\-]+$/i.test(q)) return q.toUpperCase();
     return null;
 }
 
+function leerCodigoAlmacenado() {
+    return sessionStorage.getItem(SS_KEY) || null;
+}
+
+function guardarCodigoEnSesion(codigo) {
+    if (codigo) sessionStorage.setItem(SS_KEY, codigo);
+    else        sessionStorage.removeItem(SS_KEY);
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ══════════════════════════════════════════════════════════════════
-
-// Promise que se resuelve cuando gapi.client está listo
-let gapiReady = null;
-
 window.addEventListener('load', () => {
-    codigoClase = leerCodigoDeURL();
-
-    // Inicializar gapi y guardar la Promise para esperarla después
+    // 1. Inicializar gapi como Promise
     gapiReady = new Promise((resolve) => {
         gapi.load('client', async () => {
             await gapi.client.init({
@@ -67,19 +73,37 @@ window.addEventListener('load', () => {
         });
     });
 
-    // Token client ALUMNO
+    // 2. Determinar código de clase:
+    //    - Desde la URL (alumno abrió el enlace del profe)
+    //    - O desde sessionStorage (vuelta del redirect OAuth)
+    const codigoDeURL    = leerCodigoDeURL();
+    const codigoGuardado = leerCodigoAlmacenado();
+
+    if (codigoDeURL) {
+        // URL tiene código → guardarlo en sesión por si hace falta OAuth redirect
+        codigoClase = codigoDeURL;
+        guardarCodigoEnSesion(codigoClase);
+        // Normalizar URL a la raíz para que el redirect_uri de OAuth funcione
+        // sin necesidad de registrar /1BACH-A en Google Cloud
+        history.replaceState(null, '', '/');
+    } else if (codigoGuardado) {
+        // Volvemos de un redirect OAuth (la URL es "/" pero tenemos el código guardado)
+        codigoClase = codigoGuardado;
+    }
+
+    // 3. Token clients
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CONFIG.clientId,
         scope:     SCOPES,
         callback:  async (resp) => {
             if (resp.error) { mostrarLoginError('Error de autenticación: ' + resp.error); return; }
             accessToken = resp.access_token;
+            await gapiReady;
             gapi.client.setToken({ access_token: accessToken });
             await cargarPerfilUsuario();
         },
     });
 
-    // Token client PROFESOR
     tokenClientProf = google.accounts.oauth2.initTokenClient({
         client_id: CONFIG.clientId,
         scope:     SCOPES,
@@ -92,6 +116,7 @@ window.addEventListener('load', () => {
             }
             accessToken   = resp.access_token;
             profLoginDone = true;
+            await gapiReady;
             gapi.client.setToken({ access_token: accessToken });
             document.getElementById('pasoLoginProf').style.display  = 'none';
             document.getElementById('pasoCodigoProf').style.display = '';
@@ -99,23 +124,17 @@ window.addEventListener('load', () => {
         },
     });
 
-    // Preview URL dinámica en el paso de clase
+    // 4. Preview URL en pantalla de clase
     setTimeout(() => {
         const inputClase = document.getElementById('inputCodigoClase');
         if (!inputClase) return;
-        const base = window.location.origin + '/';
         inputClase.addEventListener('input', () => {
-            document.getElementById('urlPreview').textContent = base + (inputClase.value || 'CODIGO');
+            document.getElementById('urlPreview').textContent =
+                window.location.origin + '/' + (inputClase.value || 'CODIGO');
         });
-        document.getElementById('urlPreview').textContent = base + 'CODIGO';
+        document.getElementById('urlPreview').textContent =
+            window.location.origin + '/CODIGO';
     }, 200);
-
-    // Si la URL ya trae un código de clase, mostrar login directamente
-    // (el alumno vendrá con el enlace del profe)
-    if (codigoClase) {
-        // Ya está listo — al hacer login irá directo a la clase
-        // No hay que hacer nada más aquí; pantallaLogin ya es la activa
-    }
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -208,14 +227,12 @@ function cerrarPanelProfesor() {
     profValidado  = false;
     profLoginDone = false;
     detenerPoll();
-    codigoClase = leerCodigoDeURL();
+    guardarCodigoEnSesion(null);
+    codigoClase = null;
     document.getElementById('pasoLoginProf').style.display   = '';
     document.getElementById('pasoCodigoProf').style.display  = 'none';
     document.getElementById('pasoCodigoClase').style.display = 'none';
-    const inp = document.getElementById('inputCodigoClase');
-    if (inp) inp.value = '';
-    // Volver a la raíz si no hay código de clase en la URL
-    history.pushState(null, '', '/');
+    history.replaceState(null, '', '/');
     mostrarPantalla('pantallaLogin');
 }
 
@@ -246,9 +263,9 @@ function cerrarSesion() {
     alumnos       = [];
     tamañoGrupo   = 30;
     maxVotos      = 1;
-    codigoClase   = leerCodigoDeURL();
-    // Si no hay código en URL, volver a la raíz
-    if (!codigoClase) history.pushState(null, '', '/');
+    guardarCodigoEnSesion(null);
+    codigoClase = null;
+    history.replaceState(null, '', '/');
     mostrarPantalla('pantallaLogin');
 }
 
@@ -280,8 +297,10 @@ async function cargarPerfilUsuario() {
         }
 
         if (codigoClase) {
+            // Tenemos código → entrar directo a la clase
             await entrarEnClaseComoAlumno();
         } else {
+            // Sin código → pedir al alumno que lo introduzca
             mostrarPantalla('pantallaCodigoClase');
             setTimeout(() => document.getElementById('inputCodigoAlumno')?.focus(), 100);
         }
@@ -300,12 +319,14 @@ async function unirseAClase() {
         return;
     }
     codigoClase = codigo;
+    guardarCodigoEnSesion(codigoClase);
     await entrarEnClaseComoAlumno();
 }
 
 async function entrarEnClaseComoAlumno() {
-    // Actualizar la URL del navegador a /codigoclase
-    history.pushState(null, '', '/' + codigoClase);
+    guardarCodigoEnSesion(codigoClase);
+    // Actualizar URL a /codigoclase para que sea visible (ya no necesita OAuth desde aquí)
+    history.replaceState(null, '', '/' + codigoClase);
     document.getElementById('claseBadge').textContent = '🏫 ' + codigoClase;
     mostrarPantalla('pantallaApp');
     await cargarConfigDesdeSheets();
@@ -373,8 +394,7 @@ function cambiarMaxVotos(delta) {
 // ══════════════════════════════════════════════════════════════════
 async function cargarConfigDesdeSheets() {
     if (!codigoClase) return;
-    // Esperar a que gapi.client esté completamente inicializado
-    await gapiReady;
+    await gapiReady; // esperar siempre que gapi esté listo
     try {
         const res   = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
@@ -445,6 +465,7 @@ async function guardarConfigEnSheets(grupos) {
 }
 
 async function asegurarHoja(nombre) {
+    await gapiReady;
     try {
         await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: CONFIG.spreadsheetId,
@@ -550,6 +571,7 @@ async function asegurarCabeceraVotos() {
 
 async function resetearVotos() {
     if (!confirm('¿Seguro? Esta acción no se puede deshacer.')) return;
+    await gapiReady;
     try {
         await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: CONFIG.spreadsheetId,
@@ -603,7 +625,7 @@ function evitarDuplicados() {
     selects.forEach(sel => {
         const actual = sel.value;
         Array.from(sel.options).forEach(opt => {
-            opt.disabled = opt.value && opt.value !== actual && elegidos.includes(opt.value);
+            opt.disabled = !!(opt.value && opt.value !== actual && elegidos.includes(opt.value));
         });
     });
 }
@@ -659,7 +681,6 @@ async function procesarArchivo(file) {
     const preview = document.getElementById('listaPreview');
     preview.style.display = 'none';
     status.style.display  = 'block';
-
     try {
         const ext = file.name.split('.').pop().toLowerCase();
         let nombres = [];
@@ -706,7 +727,7 @@ async function extraerConClaude(file, ext) {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
             model:'claude-sonnet-4-20250514', max_tokens:1000,
-            system:`Eres un extractor de nombres de personas. Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks. Ejemplo: ["Ana García","Pedro López"]. Si no hay nombres: []`,
+            system:`Eres un extractor de nombres. Devuelve ÚNICAMENTE un array JSON de nombres completos, sin texto adicional ni backticks. Si no hay nombres: []`,
             messages:[{role:'user',content:[contentBlock,{type:'text',text:'Extrae todos los nombres de personas de este documento.'}]}],
         })
     });
@@ -817,7 +838,6 @@ function calcularGrupos(listaAlumnos, votos) {
     listaAlumnos.forEach(a => { prefs[a] = votos[a]?.preferencias?.filter(Boolean) || []; });
     const asignado = new Set();
     const grupos   = [];
-    // Paso 1: pares mutuos
     listaAlumnos.forEach(a => {
         if (asignado.has(a)) return;
         for (const b of prefs[a]) {
@@ -828,7 +848,6 @@ function calcularGrupos(listaAlumnos, votos) {
             }
         }
     });
-    // Paso 2: resto aleatorio
     const pool = shuffle(listaAlumnos.filter(a => !asignado.has(a)));
     let grupoAbierto = grupos.find(g => g.length < tamañoGrupo) ?? null;
     pool.forEach(a => {
@@ -841,11 +860,8 @@ function calcularGrupos(listaAlumnos, votos) {
 }
 
 function shuffle(arr) {
-    const a = [...arr];
-    for (let i=a.length-1; i>0; i--) {
-        const j = Math.floor(Math.random()*(i+1));
-        [a[i],a[j]]=[a[j],a[i]];
-    }
+    const a=[...arr];
+    for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
     return a;
 }
 
@@ -866,8 +882,8 @@ function mostrarResultadoProfesor(grupos, votos) {
         html+=`<div class="grupo-card" style="animation-delay:${delay}ms">
             <div class="grupo-titulo">Grupo ${i+1} <span class="grupo-count">(${g.length})</span></div>
             <div class="chips">${g.map((n,j)=>{
-                const misPrefs = votos[n]?.preferencias||[];
-                const esMutuo  = misPrefs.some(p=>p&&g.includes(p)&&(votos[p]?.preferencias||[]).includes(n));
+                const misPrefs=votos[n]?.preferencias||[];
+                const esMutuo=misPrefs.some(p=>p&&g.includes(p)&&(votos[p]?.preferencias||[]).includes(n));
                 return `<span class="chip" style="animation-delay:${delay+j*30}ms">${n}${esMutuo?' 🤝':''}</span>`;
             }).join('')}</div>
         </div>`;
